@@ -12,7 +12,7 @@ use ethers::{
 use std::sync::Arc;
 
 #[tokio::test]
-async fn test_query_past_auction_events() -> Result<()> {
+async fn test_subscribe_parse_past_auction_event() -> Result<()> {
     dotenv()?;
 
     let wss_url = std::env::var("MAINNET_RPC_URL_WS")?;

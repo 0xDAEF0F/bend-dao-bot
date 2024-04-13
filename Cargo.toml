@@ -7,6 +7,7 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0.82"
+chrono = "0.4.37"
 dotenv = "0.15.0"
 ethers = { version = "2.0.14", features = ["rustls", "ws"] }
 eyre = "0.6.12"

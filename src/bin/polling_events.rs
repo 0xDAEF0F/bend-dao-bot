@@ -1,7 +1,7 @@
 use anyhow::Result;
-use bend_dao_collector::constants::LENDING_POOL;
-use bend_dao_collector::lending_pool::LendingPool;
-use bend_dao_collector::LendingPoolEvents;
+use bend_dao_collector::constants::LEND_POOL;
+use bend_dao_collector::lend_pool::LendPool;
+use bend_dao_collector::LendPoolEvents;
 use chrono::Local;
 use dotenv::dotenv;
 use ethers::{
@@ -19,9 +19,9 @@ async fn main() -> Result<()> {
     let provider = Provider::<Ws>::connect(wss_url).await?;
     let provider = Arc::new(provider);
 
-    let address: Address = LENDING_POOL.parse()?;
+    let address: Address = LEND_POOL.parse()?;
 
-    let contract = LendingPool::new(address, provider);
+    let contract = LendPool::new(address, provider);
 
     let events = contract.events();
 
@@ -30,37 +30,37 @@ async fn main() -> Result<()> {
     while let Some(Ok(evt)) = stream.next().await {
         let local = Local::now();
         match evt {
-            LendingPoolEvents::AuctionFilter(a) => {
+            LendPoolEvents::AuctionFilter(a) => {
                 println!("{local}\n{:?}", a);
             }
-            LendingPoolEvents::BorrowFilter(a) => {
+            LendPoolEvents::BorrowFilter(a) => {
                 println!("{local}\n{:?}", a);
             }
-            LendingPoolEvents::DepositFilter(a) => {
+            LendPoolEvents::DepositFilter(a) => {
                 println!("{local}\n{:?}", a);
             }
-            LendingPoolEvents::LiquidateFilter(a) => {
+            LendPoolEvents::LiquidateFilter(a) => {
                 println!("{local}\n{:?}", a);
             }
-            LendingPoolEvents::PausedFilter(a) => {
+            LendPoolEvents::PausedFilter(a) => {
                 println!("{local}\n{:?}", a);
             }
-            LendingPoolEvents::PausedTimeUpdatedFilter(a) => {
+            LendPoolEvents::PausedTimeUpdatedFilter(a) => {
                 println!("{local}\n{:?}", a);
             }
-            LendingPoolEvents::RedeemFilter(a) => {
+            LendPoolEvents::RedeemFilter(a) => {
                 println!("{local}\n{:?}", a);
             }
-            LendingPoolEvents::RepayFilter(a) => {
+            LendPoolEvents::RepayFilter(a) => {
                 println!("{local}\n{:?}", a);
             }
-            LendingPoolEvents::ReserveDataUpdatedFilter(a) => {
+            LendPoolEvents::ReserveDataUpdatedFilter(a) => {
                 println!("{local}\n{:?}", a);
             }
-            LendingPoolEvents::UnpausedFilter(a) => {
+            LendPoolEvents::UnpausedFilter(a) => {
                 println!("{local}\n{:?}", a);
             }
-            LendingPoolEvents::WithdrawFilter(a) => {
+            LendPoolEvents::WithdrawFilter(a) => {
                 println!("{local}\n{:?}", a);
             }
         }

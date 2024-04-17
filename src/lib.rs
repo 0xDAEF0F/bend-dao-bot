@@ -1,5 +1,7 @@
 pub mod constants;
+pub mod math;
 
 use ethers::contract::abigen;
 
-abigen!(LendingPool, "abi/LendPool.json");
+abigen!(LendPool, "abi/LendPool.json");
+abigen!(LendPoolLoan, "abi/LendPoolLoan.json");

@@ -1,13 +1,12 @@
 #![cfg(test)]
 
 use anyhow::Result;
-use bend_dao_collector::constants::{AUCTION_EVENT_BLOCK, LENDING_POOL};
-use bend_dao_collector::lending_pool::{AuctionFilter, LendingPool};
+use bend_dao_collector::constants::{AUCTION_EVENT_BLOCK, LEND_POOL};
+use bend_dao_collector::lend_pool::{AuctionFilter, LendPool};
 use dotenv::dotenv;
-use ethers::types::U256;
 use ethers::{
     providers::{Provider, Ws},
-    types::Address,
+    types::{Address, U256},
 };
 use std::sync::Arc;
 
@@ -20,9 +19,9 @@ async fn test_subscribe_parse_past_auction_event() -> Result<()> {
     let provider = Provider::<Ws>::connect(wss_url).await?;
     let provider = Arc::new(provider);
 
-    let address: Address = LENDING_POOL.parse()?;
+    let address: Address = LEND_POOL.parse()?;
 
-    let contract = LendingPool::new(address, provider);
+    let contract = LendPool::new(address, provider);
 
     let event = contract
         .auction_filter()

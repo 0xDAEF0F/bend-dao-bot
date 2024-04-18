@@ -7,6 +7,7 @@ use ethers::{
     providers::{Http, Provider},
     types::{Address, U256, U64},
 };
+use futures::future::join_all;
 use std::{collections::HashMap, sync::Arc};
 use tokio::{join, spawn, task::JoinHandle};
 
@@ -51,13 +52,27 @@ impl BendDao {
 
         let last_loan_id: U256 = lend_pool_loan.get_current_loan_id().await?;
 
-        let mut join_handle = JoinHandle::new();
+        let mut handles = Vec::new();
 
         for loan_id in 1..last_loan_id.as_u64() {
+            let lend_pool_loan = lend_pool_loan.clone();
             let future = spawn(async move {
-                let loan = lend_pool_loan.get_loan(loan_id.into());
+                let loan = lend_pool_loan.get_loan(loan_id.into()).await;
+                match loan {
+                    Ok(loan) => println!("Fetched loan: {:?}", loan),
+                    Err(e) => println!("Error fetching loan: {:?}", e),
+                }
             });
-            join_handle.push(future)
+
+            handles.push(future);
+        }
+
+        let results = join_all(handles).await;
+        for result in results {
+            match result {
+                Ok(loan) => println!("Successfully fetched loan: {:?}", loan),
+                Err(e) => println!("Task failed: {:?}", e),
+            }
         }
 
         Ok(())

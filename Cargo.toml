@@ -13,3 +13,4 @@ ethers = { version = "2.0.14", features = ["rustls", "ws"] }
 eyre = "0.6.12"
 serde = { version = "1.0.197", features = ["derive"] }
 tokio = { version = "1.37.0", features = ["full"] }
+futures = "0.3.30"

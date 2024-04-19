@@ -31,16 +31,17 @@ pub const TIMESTAMP_T1: u64 = 1704447839;
 pub const DEBT_T0: u64 = 37282629000;
 pub const DEBT_T1: u64 = 37282789555;
 
-#[tokio::test]
+#[test]
 // dependencies: last borrow index, last borrow rate
 // the borrow rate remains the same if there is no withdrawal/deposit of reserves
-async fn calculate_total_debt() -> Result<()> {
+fn calculate_total_debt() -> Result<()> {
     let borrow_rate = U256::from_dec_str(BORROW_RATE_T0)?;
     let compound_interest = calculate_compounded_interest(
         borrow_rate,
         U256::from(TIMESTAMP_T0),
         U256::from(TIMESTAMP_T1),
     );
+    println!("compound interest: {:?}", compound_interest);
     let borrow_index_t0 = U256::from_dec_str(BORROW_INDEX_T0)?;
 
     let borrow_index_t1 = ray_mul(compound_interest, borrow_index_t0).unwrap();
@@ -53,8 +54,8 @@ async fn calculate_total_debt() -> Result<()> {
     Ok(())
 }
 
-#[tokio::test]
-async fn scaled_debt_is_what_user_borrows_divided_by_borrow_index() -> Result<()> {
+#[test]
+fn scaled_debt_is_what_user_borrows_divided_by_borrow_index() -> Result<()> {
     let ray = U256::exp10(27);
 
     let debt_t0: U256 = U256::from(DEBT_T0);
@@ -67,8 +68,8 @@ async fn scaled_debt_is_what_user_borrows_divided_by_borrow_index() -> Result<()
     Ok(())
 }
 
-#[tokio::test]
-async fn total_debt_is_scaled_debt_times_borrow_index() -> Result<()> {
+#[test]
+fn total_debt_is_scaled_debt_times_borrow_index() -> Result<()> {
     // scaled by a ray (supposedly)
     let user_scaled_debt: U256 = U256::from(USER_SCALED_DEBT_T0);
 

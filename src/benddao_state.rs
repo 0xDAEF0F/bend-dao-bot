@@ -1,5 +1,3 @@
-#![allow(unused)]
-
 use crate::{constants::LEND_POOL_LOAN, LendPoolLoan, LoanData, ReserveDataUpdatedFilter};
 use anyhow::{Error, Result};
 use ethers::{
@@ -9,7 +7,7 @@ use ethers::{
 };
 use futures::future::join_all;
 use std::{collections::HashMap, sync::Arc};
-use tokio::{join, spawn, task::JoinHandle};
+use tokio::{spawn, task::JoinHandle};
 
 #[derive(Debug)]
 pub struct BendDao {
@@ -89,7 +87,7 @@ impl BendDao {
                 interest_rate: reserve_data.variable_borrow_rate,
                 borrow_index: reserve_data.variable_borrow_index,
             };
-            let _ = self.reserve_data.insert(reserve_data.reserve, rd);
+            self.reserve_data.insert(reserve_data.reserve, rd);
         }
     }
 

@@ -6,3 +6,5 @@ use ethers::contract::abigen;
 
 abigen!(LendPool, "abi/LendPool.json");
 abigen!(LendPoolLoan, "abi/LendPoolLoan.json");
+abigen!(NFTOracle, "abi/NFTOracle.json");
+abigen!(ReserveOracle, "abi/ReserveOracle.json");

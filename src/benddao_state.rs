@@ -12,6 +12,7 @@ use tokio::{spawn, task::JoinHandle};
 #[derive(Debug)]
 pub struct BendDao {
     pub reserve_data: HashMap<Address, ReserveData>,
+    pub latest_floor_price: HashMap<Address, U256>,
     pub last_mined_block: U64,
     pub loans: Vec<Loan>,
     provider: Arc<Provider<Http>>,
@@ -38,6 +39,7 @@ impl BendDao {
 
         Ok(BendDao {
             reserve_data: HashMap::new(),
+            latest_floor_price: HashMap::new(),
             last_mined_block: U64::zero(),
             loans: Vec::new(),
             provider: Arc::new(provider),
@@ -48,11 +50,20 @@ impl BendDao {
         let lend_pool_loan =
             LendPoolLoan::new(LEND_POOL_LOAN.parse::<Address>()?, self.provider.clone());
 
-        let last_loan_id: U256 = lend_pool_loan.get_current_loan_id().await?;
+        let last_loan_id: u64 = lend_pool_loan.get_current_loan_id().await?.as_u64();
+        let start_loan_id: u64 = dotenv::var("ENVIRONMENT")
+            .map(|env| {
+                if env.to_lowercase() == "production" {
+                    1
+                } else {
+                    last_loan_id - 10
+                }
+            })
+            .unwrap_or(last_loan_id - 10);
 
         let mut handles = Vec::new();
 
-        for loan_id in 1..last_loan_id.as_u64() {
+        for loan_id in start_loan_id..last_loan_id {
             let lend_pool_loan = lend_pool_loan.clone();
             let future: JoinHandle<Result<LoanData, Error>> = spawn(async move {
                 let loan: LoanData = lend_pool_loan.get_loan(loan_id.into()).await?;

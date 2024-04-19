@@ -1,7 +1,7 @@
 #![allow(unused)]
 
-use crate::{constants::LEND_POOL_LOAN, LendPoolLoan, ReserveDataUpdatedFilter};
-use anyhow::Result;
+use crate::{constants::LEND_POOL_LOAN, LendPoolLoan, LoanData, ReserveDataUpdatedFilter};
+use anyhow::{Error, Result};
 use ethers::{
     contract::LogMeta,
     providers::{Http, Provider},
@@ -56,22 +56,24 @@ impl BendDao {
 
         for loan_id in 1..last_loan_id.as_u64() {
             let lend_pool_loan = lend_pool_loan.clone();
-            let future = spawn(async move {
-                let loan = lend_pool_loan.get_loan(loan_id.into()).await;
-                match loan {
-                    Ok(loan) => println!("Fetched loan: {:?}", loan),
-                    Err(e) => println!("Error fetching loan: {:?}", e),
-                }
+            let future: JoinHandle<Result<LoanData, Error>> = spawn(async move {
+                let loan: LoanData = lend_pool_loan.get_loan(loan_id.into()).await?;
+                Ok(loan)
             });
-
             handles.push(future);
         }
 
-        let results = join_all(handles).await;
-        for result in results {
-            match result {
-                Ok(loan) => println!("Successfully fetched loan: {:?}", loan),
-                Err(e) => println!("Task failed: {:?}", e),
+        for loan in join_all(handles).await {
+            let loan = loan??;
+            // is active
+            if loan.state == 2 {
+                self.loans.push(Loan {
+                    loan_id: loan.loan_id,
+                    reserve_asset: loan.reserve_asset,
+                    nft_collection: loan.nft_asset,
+                    nft_token_id: loan.nft_token_id,
+                    scaled_debt: loan.scaled_amount,
+                });
             }
         }
 

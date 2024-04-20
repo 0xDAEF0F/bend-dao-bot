@@ -1,7 +1,7 @@
 #![cfg(test)]
 
 use anyhow::Result;
-use bend_dao_collector::constants::{AUCTION_EVENT_BLOCK, LEND_POOL};
+use bend_dao_collector::constants::LEND_POOL;
 use bend_dao_collector::lend_pool::{AuctionFilter, LendPool};
 use dotenv::dotenv;
 use ethers::{
@@ -9,6 +9,8 @@ use ethers::{
     types::{Address, U256},
 };
 use std::sync::Arc;
+
+const AUCTION_EVENT_BLOCK: u64 = 19_625_942;
 
 #[tokio::test]
 async fn test_subscribe_parse_past_auction_event() -> Result<()> {

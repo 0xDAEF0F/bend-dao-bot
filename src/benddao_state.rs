@@ -34,7 +34,7 @@ pub struct Loan {
 }
 
 impl BendDao {
-    pub fn build(url: &str) -> Result<Self> {
+    pub fn try_new(url: &str) -> Result<Self> {
         let provider = Provider::<Http>::try_from(url)?;
 
         Ok(BendDao {

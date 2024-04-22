@@ -18,7 +18,7 @@ pub struct DataSource {
 }
 
 impl DataSource {
-    pub async fn try_new(url: &str) -> Result<DataSource> {
+    pub fn try_new(url: &str) -> Result<DataSource> {
         let provider = Provider::<Http>::try_from(url)?;
         let provider = Arc::new(provider);
 
@@ -44,7 +44,7 @@ impl DataSource {
     }
 
     pub async fn get_nft_health_factor(&self, nft_addr: Address, token_id: U256) -> Result<U256> {
-        let (_, _, _, _, _, health_factor) =
+        let (_, _, _, _total_debt, _, health_factor) =
             self.lend_pool.get_nft_debt_data(nft_addr, token_id).await?;
 
         Ok(health_factor)

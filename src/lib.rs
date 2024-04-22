@@ -1,8 +1,10 @@
 pub mod benddao_state;
+pub mod coinmarketcap;
 pub mod constants;
 pub mod data_source;
 pub mod math;
 pub mod prices_client;
+pub mod reservoir;
 
 use ethers::contract::abigen;
 

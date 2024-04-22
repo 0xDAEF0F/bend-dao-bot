@@ -1,56 +1,29 @@
-use anyhow::{anyhow, Result};
-use dotenv::var;
+use crate::coinmarketcap::price_response::PriceResponse;
+use crate::reservoir::floor_response::CollectionBidsResponse;
+use anyhow::Result;
 use ethers::{
     types::{Address, U256},
     utils::to_checksum,
 };
 use reqwest::{header::HeaderValue, Client};
-use serde::Deserialize;
 use url::Url;
-
-#[derive(Debug, Deserialize)]
-struct CollectionBidsResponse {
-    orders: Vec<Order>,
-}
-
-#[derive(Debug, Deserialize)]
-struct Order {
-    price: Price,
-}
-
-#[derive(Debug, Deserialize)]
-struct Price {
-    #[serde(rename = "netAmount")]
-    net_amount: NetAmount,
-}
-
-#[derive(Debug, Deserialize)]
-struct NetAmount {
-    raw: String,
-}
 
 pub struct PricesClient {
     http_client: Client,
-    base_url: Url,
 }
 
 impl PricesClient {
-    pub fn try_new() -> Result<PricesClient> {
-        let api_key = var("RESERVOIR_API_KEY")?;
-
-        let mut default_headers = reqwest::header::HeaderMap::new();
-        default_headers.insert("x-api-key", HeaderValue::from_str(&api_key)?);
-
-        let http_client = Client::builder().default_headers(default_headers).build()?;
-
-        Ok(PricesClient {
-            http_client,
-            base_url: Url::parse("https://api.reservoir.tools")?,
-        })
+    pub fn new() -> PricesClient {
+        PricesClient {
+            http_client: Client::new(),
+        }
     }
 
+    // price in ETH
     pub async fn get_best_nft_bid(&self, collection: Address) -> Result<U256> {
-        let mut url = self.base_url.clone();
+        let api_key = dotenv::var("RESERVOIR_API_KEY")?;
+
+        let mut url: Url = "https://api.reservoir.tools".parse()?;
 
         let path = format!(
             "collections/{}/bids/v1",
@@ -58,21 +31,68 @@ impl PricesClient {
         );
         url.set_path(&path);
 
-        let res = self.http_client.get(url).send().await?;
+        let res = self
+            .http_client
+            .get(url)
+            .header("x-api-key", HeaderValue::from_str(&api_key)?)
+            .send()
+            .await?;
+        let res: CollectionBidsResponse = res.json().await?;
 
-        let response: CollectionBidsResponse = res.json().await?;
+        Ok(res.get_best_bid()?)
+    }
 
-        let price = &response
-            .orders
-            .first()
-            .ok_or_else(|| anyhow!("no bids found"))?
-            .price
-            .net_amount
-            .raw;
+    // scaled by 1e18
+    pub async fn get_usdt_eth_price(&self) -> Result<U256> {
+        let eth_usd_price = self.get_eth_usd_price().await?;
+        let usdt_usd_price = self.get_usdt_usd_price().await?;
 
-        let price = U256::from_dec_str(&price)?;
+        let price = usdt_usd_price * 1e18 / eth_usd_price;
+        let price = price.floor();
+        let price = format!("{}", price);
 
-        Ok(price)
+        Ok(U256::from_dec_str(&price)?)
+    }
+
+    async fn get_eth_usd_price(&self) -> Result<f64> {
+        let api_key = dotenv::var("COINMARKETCAP_API_KEY")?;
+
+        let mut url: Url = "https://pro-api.coinmarketcap.com".parse()?;
+        url.set_path("v2/cryptocurrency/quotes/latest");
+
+        url.set_query(Some("id=1027"));
+
+        let res = self
+            .http_client
+            .get(url)
+            .header("X-CMC_PRO_API_KEY", api_key)
+            .header("Accept", "application/json")
+            .send()
+            .await?;
+
+        let res: PriceResponse = res.json().await?;
+
+        Ok(res.get_usd_price())
+    }
+
+    async fn get_usdt_usd_price(&self) -> Result<f64> {
+        let api_key = dotenv::var("COINMARKETCAP_API_KEY")?;
+
+        let mut url: Url = "https://pro-api.coinmarketcap.com".parse()?;
+        url.set_path("v2/cryptocurrency/quotes/latest");
+        url.set_query(Some("id=825"));
+
+        let res = self
+            .http_client
+            .get(url)
+            .header("X-CMC_PRO_API_KEY", api_key)
+            .header("Accept", "application/json")
+            .send()
+            .await?;
+
+        let res: PriceResponse = res.json().await?;
+
+        Ok(res.get_usd_price())
     }
 }
 
@@ -83,7 +103,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_best_nft_bid() {
-        let client = PricesClient::try_new().unwrap();
+        let client = PricesClient::new();
 
         let price = client
             .get_best_nft_bid(BAYC_ADDRESS.parse().unwrap())

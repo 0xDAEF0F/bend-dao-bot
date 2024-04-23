@@ -1,7 +1,7 @@
 #![cfg(test)]
 
 use anyhow::Result;
-use bend_dao_collector::constants::LEND_POOL;
+use bend_dao_collector::constants::bend_dao::LEND_POOL;
 use bend_dao_collector::lend_pool::{AuctionFilter, LendPool};
 use dotenv::dotenv;
 use ethers::{

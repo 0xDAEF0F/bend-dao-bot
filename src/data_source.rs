@@ -1,6 +1,7 @@
 use crate::{
-    constants::{LEND_POOL, LEND_POOL_LOAN, NFT_ORACLE, RESERVE_ORACLE},
-    LendPool, LendPoolLoan, NFTOracle, ReserveOracle,
+    benddao_state::Loan,
+    constants::bend_dao::{LEND_POOL, LEND_POOL_LOAN, NFT_ORACLE, RESERVE_ORACLE},
+    LendPool, LendPoolLoan, LoanData, NFTOracle, ReserveOracle,
 };
 use anyhow::Result;
 use ethers::{
@@ -9,6 +10,7 @@ use ethers::{
 };
 use std::sync::Arc;
 
+#[derive(Debug)]
 pub struct DataSource {
     pub provider: Arc<Provider<Http>>,
     pub lend_pool: LendPool<Provider<Http>>,
@@ -43,10 +45,23 @@ impl DataSource {
         })
     }
 
-    pub async fn get_nft_health_factor(&self, nft_addr: Address, token_id: U256) -> Result<U256> {
-        let (_, _, _, _total_debt, _, health_factor) =
-            self.lend_pool.get_nft_debt_data(nft_addr, token_id).await?;
+    pub async fn get_updated_loan(&self, loan_id: U256) -> Result<Loan> {
+        let loan_data: LoanData = self.lend_pool_loan.get_loan(loan_id).await?;
 
-        Ok(health_factor)
+        let (_, _, _, total_debt, _, health_factor) = self
+            .lend_pool
+            .get_nft_debt_data(loan_data.reserve_asset, loan_data.nft_token_id)
+            .await?;
+
+        let loan = Loan {
+            health_factor,
+            total_debt,
+            loan_id: loan_data.loan_id,
+            nft_collection: loan_data.nft_asset,
+            nft_token_id: loan_data.nft_token_id,
+            reserve_asset: loan_data.reserve_asset,
+        };
+
+        Ok(loan)
     }
 }

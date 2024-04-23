@@ -59,7 +59,6 @@ impl PricesClient {
 
         let mut url: Url = "https://pro-api.coinmarketcap.com".parse()?;
         url.set_path("v2/cryptocurrency/quotes/latest");
-
         url.set_query(Some("id=1027"));
 
         let res = self
@@ -99,7 +98,7 @@ impl PricesClient {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::constants::BAYC_ADDRESS;
+    use crate::constants::bend_dao::BAYC_ADDRESS;
 
     #[tokio::test]
     async fn test_get_best_nft_bid() {

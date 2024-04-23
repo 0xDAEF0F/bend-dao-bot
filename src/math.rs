@@ -1,4 +1,4 @@
-use crate::constants::{RAY, SECONDS_PER_YEAR};
+use crate::constants::math::{RAY, SECONDS_PER_YEAR};
 use ethers::types::U256;
 
 /**

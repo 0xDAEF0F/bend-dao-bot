@@ -1,5 +1,5 @@
 use crate::{
-    benddao_state::Loan,
+    benddao_state::{Loan, Status},
     constants::bend_dao::{LEND_POOL, LEND_POOL_LOAN, NFT_ORACLE, RESERVE_ORACLE},
     LendPool, LendPoolLoan, LoanData, NFTOracle, ReserveOracle,
 };
@@ -45,8 +45,20 @@ impl DataSource {
         })
     }
 
-    pub async fn get_updated_loan(&self, loan_id: U256) -> Result<Loan> {
+    pub async fn get_updated_loan(&self, loan_id: U256) -> Result<Option<Loan>> {
         let loan_data: LoanData = self.lend_pool_loan.get_loan(loan_id).await?;
+
+        // repaid or defaulted
+        if loan_data.state == 4 || loan_data.state == 5 {
+            return Ok(None);
+        }
+
+        let status = match loan_data.state {
+            1 => Status::Created,
+            2 => Status::Active,
+            3 => Status::Auction,
+            _ => panic!("invalid state"),
+        };
 
         let (_, _, _, total_debt, _, health_factor) = self
             .lend_pool
@@ -55,6 +67,7 @@ impl DataSource {
 
         let loan = Loan {
             health_factor,
+            status,
             total_debt,
             loan_id: loan_data.loan_id,
             nft_collection: loan_data.nft_asset,
@@ -62,6 +75,6 @@ impl DataSource {
             reserve_asset: loan_data.reserve_asset,
         };
 
-        Ok(loan)
+        Ok(Some(loan))
     }
 }

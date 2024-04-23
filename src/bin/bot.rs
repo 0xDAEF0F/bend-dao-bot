@@ -59,8 +59,7 @@ async fn main() -> Result<()> {
                     lock.handle_auction(evt.loan_id).await?;
                 }
                 LendPoolEvents::LiquidateFilter(evt) => {
-                    // loan moved to terminal state
-                    lock.handle_liquidation(evt.loan_id).await?
+                    lock.handle_liquidation(evt.loan_id);
                 }
                 LendPoolEvents::RedeemFilter(evt) => {
                     // loan has been partially repaid by owner and

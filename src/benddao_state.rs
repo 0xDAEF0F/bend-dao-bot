@@ -1,20 +1,8 @@
-use crate::{
-    constants::bend_dao::{HEALTH_FACTOR_THRESHOLD_TO_MONITOR, LEND_POOL, LEND_POOL_LOAN},
-    data_source::DataSource,
-    LendPool, LendPoolLoan, LoanData,
-};
+use crate::{constants::bend_dao::HEALTH_FACTOR_THRESHOLD_TO_MONITOR, data_source::DataSource};
 use anyhow::Result;
-use ethers::{
-    providers::Provider,
-    types::{Address, U256},
-};
-use futures::future::join_all;
+use ethers::types::{Address, U256};
 use log::info;
-use std::{
-    collections::{HashMap, HashSet},
-    sync::Arc,
-};
-use tokio::{spawn, task::JoinHandle};
+use std::collections::{HashMap, HashSet};
 
 #[derive(Debug, PartialEq)]
 pub enum Status {
@@ -142,7 +130,7 @@ impl BendDao {
         Ok(())
     }
 
-    pub async fn build_all_loans(&'static mut self) -> Result<()> {
+    pub async fn build_all_loans(&mut self) -> Result<()> {
         let last_loan_id: u64 = self
             .data_source
             .lend_pool_loan

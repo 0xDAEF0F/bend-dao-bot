@@ -8,17 +8,12 @@ use ethers::{
 use reqwest::{header::HeaderValue, Client};
 use url::Url;
 
+#[derive(Default)]
 pub struct PricesClient {
     http_client: Client,
 }
 
 impl PricesClient {
-    pub fn new() -> PricesClient {
-        PricesClient {
-            http_client: Client::new(),
-        }
-    }
-
     // price in ETH
     pub async fn get_best_nft_bid(&self, collection: Address) -> Result<U256> {
         let api_key = dotenv::var("RESERVOIR_API_KEY")?;
@@ -39,7 +34,7 @@ impl PricesClient {
             .await?;
         let res: CollectionBidsResponse = res.json().await?;
 
-        Ok(res.get_best_bid()?)
+        res.get_best_bid()
     }
 
     // scaled by 1e18
@@ -102,7 +97,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_best_nft_bid() {
-        let client = PricesClient::new();
+        let client = PricesClient::default();
 
         let price = client
             .get_best_nft_bid(BAYC_ADDRESS.parse().unwrap())

@@ -62,5 +62,5 @@ pub fn calculate_compounded_interest(
     let second_term = (exp * (exp_minus_one) * (base_power_two)) / 2;
     let third_term = (exp * (exp_minus_one) * (exp_minus_two) * (base_power_three)) / 6;
 
-    return U256::exp10(27) + (rate_per_second * (exp)) + (second_term) + (third_term);
+    U256::exp10(27) + (rate_per_second * (exp)) + (second_term) + (third_term)
 }

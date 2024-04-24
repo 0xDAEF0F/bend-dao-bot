@@ -12,44 +12,54 @@ use futures::future::join_all;
 use log::info;
 use std::sync::Arc;
 use tokio::sync::Mutex;
+use tokio::task::JoinHandle;
 
 #[tokio::main]
 async fn main() -> Result<()> {
     dotenv()?;
     env_logger::init();
 
-    let bend_dao = BendDao::try_new()?;
-    let bend_dao = Arc::new(Mutex::new(bend_dao));
-
     let wss_url = std::env::var("MAINNET_RPC_URL_WS")?;
     let provider = Provider::<Ws>::connect(wss_url).await?;
+    let provider = Arc::new(provider);
 
     info!(
         "current block number is: {}",
         provider.get_block_number().await?
     );
 
-    let provider = Arc::new(provider);
+    let mut bend_dao = BendDao::try_new()?;
 
-    bend_dao
-        .lock()
-        .await
-        .build_all_loans(provider.clone())
-        .await?;
+    bend_dao.build_all_loans(provider.clone()).await?;
 
-    let provider_ = provider.clone();
-    let bend_dao_ = bend_dao.clone();
-    let task_one_handle = tokio::spawn(async move {
+    let bend_dao = Arc::new(Mutex::new(bend_dao));
+
+    let task_one_handle = task_one(provider.clone(), bend_dao.clone());
+    let task_two_handle = task_two(provider.clone(), bend_dao.clone());
+
+    join_all([task_one_handle, task_two_handle]).await;
+
+    info!("ending bot");
+
+    Ok(())
+}
+
+// listen to bend dao lend pool events and modify state
+fn task_one(
+    provider: Arc<Provider<Ws>>,
+    bend_dao_state: Arc<Mutex<BendDao>>,
+) -> JoinHandle<Result<()>> {
+    tokio::spawn(async move {
         info!("starting event listener task for lend pool events");
 
         let lend_pool: Address = LEND_POOL.parse()?;
-        let lend_pool = LendPool::new(lend_pool, provider_);
+        let lend_pool = LendPool::new(lend_pool, provider);
 
         let events = lend_pool.events();
         let mut stream = events.subscribe().await?;
 
         while let Some(Ok(evt)) = stream.next().await {
-            let mut lock = bend_dao_.lock().await;
+            let mut lock = bend_dao_state.lock().await;
             match evt {
                 LendPoolEvents::BorrowFilter(evt) => {
                     // a loan has been created or borrowed more
@@ -76,27 +86,28 @@ async fn main() -> Result<()> {
         }
 
         info!("returning event listener task for lend pool");
-        anyhow::Ok(())
-    });
 
-    let provider_ = provider.clone();
-    let bend_dao_ = bend_dao.clone();
-    let task_two_handle = tokio::spawn(async move {
+        anyhow::Ok(())
+    })
+}
+
+// listen to new blocks in ethereum and update the state
+fn task_two(
+    provider: Arc<Provider<Ws>>,
+    bend_dao_state: Arc<Mutex<BendDao>>,
+) -> JoinHandle<Result<()>> {
+    tokio::spawn(async move {
         info!("starting task for new blocks");
 
-        let mut stream = provider_.subscribe_blocks().await?;
+        let mut stream = provider.subscribe_blocks().await?;
 
         while let Some(_block) = stream.next().await {
-            let mut lock = bend_dao_.lock().await;
+            let mut lock = bend_dao_state.lock().await;
             lock.handle_new_block().await?;
         }
 
         info!("ending task for new blocks");
+
         anyhow::Ok(())
-    });
-
-    let _ = join_all([task_one_handle, task_two_handle]).await;
-
-    info!("ending bot program");
-    Ok(())
+    })
 }

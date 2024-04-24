@@ -33,6 +33,6 @@ impl CollectionBidsResponse {
             .net_amount
             .raw;
 
-        Ok(U256::from_dec_str(&price)?)
+        Ok(U256::from_dec_str(price)?)
     }
 }

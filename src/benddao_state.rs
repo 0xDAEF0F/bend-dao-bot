@@ -9,6 +9,7 @@ use ethers::{
     types::{Address, U256},
 };
 use futures::future::join_all;
+use log::info;
 use std::{
     collections::{HashMap, HashSet},
     sync::Arc,
@@ -41,12 +42,13 @@ pub struct Loan {
 }
 
 impl BendDao {
-    pub fn new() -> BendDao {
-        BendDao {
+    pub fn try_new() -> Result<BendDao> {
+        let url = dotenv::var("MAINNET_RPC_URL")?;
+        Ok(BendDao {
             monitored_loans: HashSet::new(),
             loans: HashMap::new(),
-            data_source: DataSource::try_new("").unwrap(),
-        }
+            data_source: DataSource::try_new(&url)?,
+        })
     }
 
     pub async fn handle_repay_loan(&mut self, loan_id: U256) -> Result<()> {
@@ -156,10 +158,10 @@ impl BendDao {
                 if env.to_lowercase() == "production" {
                     1
                 } else {
-                    last_loan_id - 10
+                    last_loan_id - 200
                 }
             })
-            .unwrap_or(last_loan_id - 10);
+            .unwrap_or(last_loan_id - 200);
 
         let mut handles = Vec::new();
 
@@ -205,6 +207,8 @@ impl BendDao {
                 self.loans.insert(loan.loan_id, loan);
             }
         }
+
+        info!("all loans have been built");
 
         Ok(())
     }

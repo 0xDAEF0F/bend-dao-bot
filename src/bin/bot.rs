@@ -8,35 +8,40 @@ use ethers::{
     providers::{Provider, StreamExt, Ws},
     types::Address,
 };
+use futures::future::join_all;
+use log::info;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-
-// 1. build all current loans with health factors
-// 2. group the health factors below 1.1 in a separate container
-// 3. every block check for that containers health factors if they go below 1
-// 4. if some loan is auctionable check if there is a profit
-
-// events that are important to listen:
-// -
-// let url = "ws://103.219.171.12:8546";
-// let mut bend_dao = BendDao::try_new(url)?;
-// bend_dao.build_all_loans().await?;
 
 #[tokio::main]
 async fn main() -> Result<()> {
     dotenv()?;
+    env_logger::init();
 
-    let bend_dao = BendDao::new();
+    let bend_dao = BendDao::try_new()?;
     let bend_dao = Arc::new(Mutex::new(bend_dao));
 
     let wss_url = std::env::var("MAINNET_RPC_URL_WS")?;
-
     let provider = Provider::<Ws>::connect(wss_url).await?;
+
+    info!(
+        "current block number is: {}",
+        provider.get_block_number().await?
+    );
+
     let provider = Arc::new(provider);
+
+    bend_dao
+        .lock()
+        .await
+        .build_all_loans(provider.clone())
+        .await?;
 
     let provider_ = provider.clone();
     let bend_dao_ = bend_dao.clone();
-    let handle = tokio::spawn(async move {
+    let task_one_handle = tokio::spawn(async move {
+        info!("starting event listener task for lend pool events");
+
         let lend_pool: Address = LEND_POOL.parse()?;
         let lend_pool = LendPool::new(lend_pool, provider_);
 
@@ -69,12 +74,16 @@ async fn main() -> Result<()> {
                 _ => {}
             }
         }
+
+        info!("returning event listener task for lend pool");
         anyhow::Ok(())
     });
 
     let provider_ = provider.clone();
     let bend_dao_ = bend_dao.clone();
-    let handle2 = tokio::spawn(async move {
+    let task_two_handle = tokio::spawn(async move {
+        info!("starting task for new blocks");
+
         let mut stream = provider_.subscribe_blocks().await?;
 
         while let Some(_block) = stream.next().await {
@@ -82,8 +91,12 @@ async fn main() -> Result<()> {
             lock.handle_new_block().await?;
         }
 
+        info!("ending task for new blocks");
         anyhow::Ok(())
     });
 
+    let _ = join_all([task_one_handle, task_two_handle]).await;
+
+    info!("ending bot program");
     Ok(())
 }

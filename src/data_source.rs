@@ -1,6 +1,9 @@
 use crate::{
-    benddao_state::{Loan, Status},
-    constants::bend_dao::{LEND_POOL, LEND_POOL_LOAN, NFT_ORACLE, RESERVE_ORACLE},
+    benddao_state::{Loan, NftAsset, ReserveAsset, Status},
+    constants::bend_dao::{
+        BAYC_ADDRESS, LEND_POOL, LEND_POOL_LOAN, NFT_ORACLE, RESERVE_ORACLE, USDT_ADDRESS,
+        WETH_ADDRESS, WRAPPED_CRYPTOPUNKS,
+    },
     LendPool, LendPoolLoan, LoanData, NFTOracle, ReserveOracle,
 };
 use anyhow::Result;
@@ -9,7 +12,7 @@ use ethers::{
     types::{Address, U256},
 };
 use futures::future::join_all;
-use std::sync::Arc;
+use std::{ops::Range, sync::Arc};
 use tokio::task::JoinHandle;
 
 #[derive(Debug)]
@@ -47,11 +50,11 @@ impl DataSource {
         })
     }
 
-    pub async fn get_loans(&self, start_loan_id: u64, last_loan_id: u64) -> Result<Vec<Loan>> {
+    pub async fn get_loans_range(&self, range: Range<u64>) -> Result<Vec<Loan>> {
         let mut handles = Vec::new();
         let mut loans: Vec<Loan> = Vec::new();
 
-        for loan_id in start_loan_id..last_loan_id {
+        for loan_id in range {
             let loan_id = U256::from_little_endian(&loan_id.to_le_bytes());
             let lend_pool = self.lend_pool.clone();
             let lend_pool_loan = self.lend_pool_loan.clone();
@@ -98,18 +101,42 @@ async fn get_loan_data(
         _ => panic!("invalid state"),
     };
 
+    let weth = WETH_ADDRESS.parse::<Address>()?;
+    let usdt = USDT_ADDRESS.parse::<Address>()?;
+
+    let reserve_asset = if loan_data.reserve_asset == weth {
+        ReserveAsset::Weth
+    } else if loan_data.reserve_asset == usdt {
+        ReserveAsset::Usdt
+    } else {
+        // not interested
+        return Ok(None);
+    };
+
+    let bayc = BAYC_ADDRESS.parse::<Address>()?;
+    let crypto_punks = WRAPPED_CRYPTOPUNKS.parse::<Address>()?;
+
+    let nft_asset = if loan_data.nft_asset == bayc {
+        NftAsset::Bayc
+    } else if loan_data.nft_asset == crypto_punks {
+        NftAsset::CryptoPunks
+    } else {
+        // not interested
+        return Ok(None);
+    };
+
     let (_, _, _, total_debt, _, health_factor) = lend_pool
-        .get_nft_debt_data(loan_data.reserve_asset, loan_data.nft_token_id)
+        .get_nft_debt_data(loan_data.nft_asset, loan_data.nft_token_id)
         .await?;
 
     let loan = Loan {
         health_factor,
         status,
         total_debt,
+        reserve_asset,
+        nft_asset,
         loan_id: loan_data.loan_id,
-        nft_collection: loan_data.nft_asset,
         nft_token_id: loan_data.nft_token_id,
-        reserve_asset: loan_data.reserve_asset,
     };
 
     Ok(Some(loan))

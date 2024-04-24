@@ -9,7 +9,7 @@ use ethers::{
     types::Address,
 };
 use futures::future::join_all;
-use log::info;
+use log::{debug, info};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
@@ -20,6 +20,9 @@ async fn main() -> Result<()> {
     env_logger::init();
 
     let wss_url = std::env::var("MAINNET_RPC_URL_WS")?;
+
+    debug!("wss_url: {wss_url}");
+
     let provider = Provider::<Ws>::connect(wss_url).await?;
     let provider = Arc::new(provider);
 
@@ -87,7 +90,7 @@ fn task_one(
 
         info!("returning event listener task for lend pool");
 
-        anyhow::Ok(())
+        Ok(())
     })
 }
 
@@ -101,13 +104,15 @@ fn task_two(
 
         let mut stream = provider.subscribe_blocks().await?;
 
-        while let Some(_block) = stream.next().await {
+        while let Some(block) = stream.next().await {
+            info!("new block: {:?}", block.number);
+
             let mut lock = bend_dao_state.lock().await;
             lock.handle_new_block().await?;
         }
 
         info!("ending task for new blocks");
 
-        anyhow::Ok(())
+        Ok(())
     })
 }

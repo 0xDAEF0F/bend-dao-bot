@@ -1,7 +1,11 @@
-use crate::{constants::bend_dao::HEALTH_FACTOR_THRESHOLD_TO_MONITOR, data_source::DataSource};
+use crate::{
+    constants::bend_dao::{BAYC_ADDRESS, HEALTH_FACTOR_THRESHOLD_TO_MONITOR, WRAPPED_CRYPTOPUNKS},
+    data_source::DataSource,
+    prices_client::PricesClient,
+};
 use anyhow::Result;
-use ethers::types::{Address, U256};
-use log::info;
+use ethers::types::U256;
+use log::{debug, info};
 use std::collections::{HashMap, HashSet};
 
 #[derive(Debug, PartialEq)]
@@ -11,11 +15,33 @@ pub enum Status {
     Auction,
 }
 
+#[derive(Debug, PartialEq)]
+pub enum ReserveAsset {
+    Weth,
+    Usdt,
+}
+
+#[derive(Debug, PartialEq)]
+pub enum NftAsset {
+    Bayc,
+    CryptoPunks,
+}
+
+impl ToString for NftAsset {
+    fn to_string(&self) -> String {
+        match self {
+            NftAsset::Bayc => BAYC_ADDRESS.to_string(),
+            NftAsset::CryptoPunks => WRAPPED_CRYPTOPUNKS.to_string(),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct BendDao {
     loans: HashMap<U256, Loan>,
     monitored_loans: HashSet<U256>,
     data_source: DataSource,
+    prices_client: PricesClient,
 }
 
 #[derive(Debug)]
@@ -25,8 +51,8 @@ pub struct Loan {
     pub nft_token_id: U256,
     pub health_factor: U256,
     pub total_debt: U256,
-    pub reserve_asset: Address,
-    pub nft_collection: Address,
+    pub reserve_asset: ReserveAsset,
+    pub nft_asset: NftAsset,
 }
 
 impl BendDao {
@@ -36,6 +62,7 @@ impl BendDao {
             monitored_loans: HashSet::new(),
             loans: HashMap::new(),
             data_source: DataSource::try_new(&url)?,
+            prices_client: PricesClient::default(),
         })
     }
 
@@ -117,39 +144,65 @@ impl BendDao {
     }
 
     pub async fn handle_new_block(&mut self) -> Result<()> {
+        info!("iterating on monitored_loans");
         for loan_id in self.monitored_loans.iter() {
+            info!("checking loan {} status", loan_id.as_u64());
+
             let updated_loan = self.data_source.get_updated_loan(*loan_id).await?.unwrap();
 
             if updated_loan.health_factor >= U256::exp10(18) {
+                info!("loan_id: {} above 1.0", loan_id.as_u64());
                 continue;
             }
 
+            info!("loan {} auctionable", loan_id.as_u64());
             // determine the profitability
-        }
 
+            let nft_price_eth = self
+                .prices_client
+                .get_best_nft_bid(updated_loan.nft_asset)
+                .await?;
+
+            let total_debt_eth = match updated_loan.reserve_asset {
+                ReserveAsset::Usdt => {
+                    let usdt_eth_price = self.prices_client.get_usdt_eth_price().await?;
+                    updated_loan.total_debt * U256::exp10(18) / usdt_eth_price
+                }
+                ReserveAsset::Weth => updated_loan.total_debt,
+            };
+
+            if nft_price_eth < total_debt_eth {
+                info!("price of nft less than total debt");
+            } else {
+                let profit = nft_price_eth - total_debt_eth;
+                info!("potential profit of: {}", profit);
+            }
+        }
         Ok(())
     }
 
     pub async fn build_all_loans(&mut self) -> Result<()> {
+        // this loan has not yet existed so not inclusive range
         let last_loan_id: u64 = self
             .data_source
             .lend_pool_loan
             .get_current_loan_id()
             .await?
             .as_u64();
+
         let start_loan_id: u64 = dotenv::var("ENVIRONMENT")
             .map(|env| {
                 if env.to_lowercase() == "production" {
                     1
                 } else {
-                    last_loan_id - 200
+                    last_loan_id - 2
                 }
             })
-            .unwrap_or(last_loan_id - 200);
+            .unwrap_or(last_loan_id - 2);
 
         let all_loans = self
             .data_source
-            .get_loans(start_loan_id, last_loan_id)
+            .get_loans_range(start_loan_id..last_loan_id)
             .await?;
 
         for loan in all_loans {
@@ -157,6 +210,7 @@ impl BendDao {
         }
 
         info!("all loans have been built");
+        debug!("{:#?}", &self.loans);
 
         Ok(())
     }

@@ -1,28 +1,25 @@
-use crate::coinmarketcap::price_response::PriceResponse;
 use crate::reservoir::floor_response::CollectionBidsResponse;
+use crate::{benddao_state::NftAsset, coinmarketcap::price_response::PriceResponse};
 use anyhow::Result;
-use ethers::{
-    types::{Address, U256},
-    utils::to_checksum,
-};
+use ethers::types::U256;
 use reqwest::{header::HeaderValue, Client};
 use url::Url;
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct PricesClient {
     http_client: Client,
 }
 
 impl PricesClient {
     // price in ETH
-    pub async fn get_best_nft_bid(&self, collection: Address) -> Result<U256> {
+    pub async fn get_best_nft_bid(&self, nft_asset: NftAsset) -> Result<U256> {
         let api_key = dotenv::var("RESERVOIR_API_KEY")?;
 
         let mut url: Url = "https://api.reservoir.tools".parse()?;
 
         let path = format!(
             "collections/{}/bids/v1",
-            to_checksum(&collection, None).to_lowercase()
+            nft_asset.to_string().to_lowercase()
         );
         url.set_path(&path);
 
@@ -93,16 +90,12 @@ impl PricesClient {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::constants::bend_dao::BAYC_ADDRESS;
 
     #[tokio::test]
     async fn test_get_best_nft_bid() {
         let client = PricesClient::default();
 
-        let price = client
-            .get_best_nft_bid(BAYC_ADDRESS.parse().unwrap())
-            .await
-            .unwrap();
+        let price = client.get_best_nft_bid(NftAsset::Bayc).await.unwrap();
 
         assert!(price > U256::zero());
     }

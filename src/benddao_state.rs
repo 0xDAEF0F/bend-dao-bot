@@ -142,17 +142,13 @@ impl BendDao {
         Ok(())
     }
 
-    pub async fn build_all_loans<P>(&mut self, provider: Arc<Provider<P>>) -> Result<()>
-    where
-        P: ethers::providers::JsonRpcClient + 'static,
-    {
-        let lend_pool: Address = LEND_POOL.parse()?;
-        let lend_pool = LendPool::new(lend_pool, provider.clone());
-
-        let lend_pool_loan: Address = LEND_POOL_LOAN.parse()?;
-        let lend_pool_loan = LendPoolLoan::new(lend_pool_loan, provider.clone());
-
-        let last_loan_id: u64 = lend_pool_loan.get_current_loan_id().await?.as_u64();
+    pub async fn build_all_loans(&'static mut self) -> Result<()> {
+        let last_loan_id: u64 = self
+            .data_source
+            .lend_pool_loan
+            .get_current_loan_id()
+            .await?
+            .as_u64();
         let start_loan_id: u64 = dotenv::var("ENVIRONMENT")
             .map(|env| {
                 if env.to_lowercase() == "production" {
@@ -163,49 +159,13 @@ impl BendDao {
             })
             .unwrap_or(last_loan_id - 200);
 
-        let mut handles = Vec::new();
+        let all_loans = self
+            .data_source
+            .get_loans(start_loan_id, last_loan_id)
+            .await?;
 
-        for loan_id in start_loan_id..last_loan_id {
-            let lend_pool = lend_pool.clone();
-            let lend_pool_loan = lend_pool_loan.clone();
-            let future: JoinHandle<Result<Option<Loan>>> = spawn(async move {
-                let loan: LoanData = lend_pool_loan.get_loan(loan_id.into()).await?;
-
-                // repaid or defaulted (not interested in these loans)
-                if loan.state == 4 || loan.state == 5 {
-                    return Ok(None);
-                }
-
-                let status = match loan.state {
-                    1 => Status::Created,
-                    2 => Status::Active,
-                    3 => Status::Auction,
-                    _ => panic!("invalid state"),
-                };
-
-                let (_, _, _, total_debt, _, health_factor) = lend_pool
-                    .get_nft_debt_data(loan.nft_asset, loan.nft_token_id)
-                    .await?;
-
-                let loan = Loan {
-                    loan_id: loan.loan_id,
-                    status,
-                    health_factor,
-                    total_debt,
-                    reserve_asset: loan.reserve_asset,
-                    nft_collection: loan.nft_asset,
-                    nft_token_id: loan.nft_token_id,
-                };
-
-                Ok(Some(loan))
-            });
-            handles.push(future);
-        }
-
-        for loan in join_all(handles).await {
-            if let Some(loan) = loan?? {
-                self.loans.insert(loan.loan_id, loan);
-            }
+        for loan in all_loans {
+            self.loans.insert(loan.loan_id, loan);
         }
 
         info!("all loans have been built");

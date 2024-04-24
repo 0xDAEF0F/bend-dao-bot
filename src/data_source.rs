@@ -8,7 +8,9 @@ use ethers::{
     providers::{Http, Provider},
     types::{Address, U256},
 };
+use futures::future::join_all;
 use std::sync::Arc;
+use tokio::task::JoinHandle;
 
 #[derive(Debug)]
 pub struct DataSource {
@@ -45,6 +47,32 @@ impl DataSource {
         })
     }
 
+    pub async fn get_loans(
+        &'static self,
+        start_loan_id: u64,
+        last_loan_id: u64,
+    ) -> Result<Vec<Loan>> {
+        let mut handles = Vec::new();
+        let mut loans: Vec<Loan> = Vec::new();
+
+        for loan_id in start_loan_id..last_loan_id {
+            let loan_id = U256::from_little_endian(&loan_id.to_le_bytes());
+            let future: JoinHandle<Result<Option<Loan>>> =
+                tokio::spawn(async move { self.get_updated_loan(loan_id).await });
+            handles.push(future);
+        }
+
+        let result = join_all(handles).await;
+
+        for res in result {
+            let loan = res??;
+            if let Some(loan) = loan {
+                loans.push(loan)
+            }
+        }
+
+        Ok(loans)
+    }
     pub async fn get_updated_loan(&self, loan_id: U256) -> Result<Option<Loan>> {
         let loan_data: LoanData = self.lend_pool_loan.get_loan(loan_id).await?;
 

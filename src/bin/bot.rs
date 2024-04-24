@@ -28,11 +28,10 @@ async fn main() -> Result<()> {
         provider.get_block_number().await?
     );
 
-    let mut bend_dao = BendDao::try_new()?;
-
-    bend_dao.build_all_loans(provider.clone()).await?;
-
+    let bend_dao = BendDao::try_new()?;
     let bend_dao = Arc::new(Mutex::new(bend_dao));
+
+    bend_dao.lock().await.build_all_loans().await?;
 
     let task_one_handle = task_one(provider.clone(), bend_dao.clone());
     let task_two_handle = task_two(provider.clone(), bend_dao.clone());

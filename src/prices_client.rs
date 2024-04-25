@@ -11,7 +11,7 @@ pub struct PricesClient {
 }
 
 impl PricesClient {
-    // price in ETH
+    // price in ETH (1e18)
     pub async fn get_best_nft_bid(&self, nft_asset: NftAsset) -> Result<U256> {
         let api_key = dotenv::var("RESERVOIR_API_KEY")?;
 
@@ -19,9 +19,10 @@ impl PricesClient {
 
         let path = format!(
             "collections/{}/bids/v1",
-            nft_asset.to_string().to_lowercase()
+            nft_asset.checksummed_address().to_lowercase()
         );
         url.set_path(&path);
+        url.set_query(Some("type=collection")); // collection wide bids
 
         let res = self
             .http_client
@@ -90,6 +91,7 @@ impl PricesClient {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{benddao_state::Loan, data_source::DataSource};
 
     #[tokio::test]
     async fn test_get_best_nft_bid() {
@@ -98,5 +100,33 @@ mod tests {
         let price = client.get_best_nft_bid(NftAsset::Bayc).await.unwrap();
 
         assert!(price > U256::zero());
+    }
+
+    #[tokio::test]
+    async fn test_get_profit_for_nft() -> Result<()> {
+        let url = dotenv::var("MAINNET_RPC_URL")?;
+
+        let data_source = DataSource::try_new(&url)?;
+        let prices_client = PricesClient::default();
+
+        let loan_id = U256::from(13069); // token id: #3599
+        let loan: Loan = data_source.get_updated_loan(loan_id).await?.unwrap();
+
+        let _eth_price = prices_client
+            .get_best_nft_bid(NftAsset::Mayc)
+            .await
+            .unwrap();
+
+        let usdt_eth = prices_client.get_usdt_eth_price().await?;
+        println!("usdt_eth: {}", usdt_eth);
+
+        let total_debt_eth = loan.total_debt * usdt_eth / U256::exp10(6);
+
+        assert!(total_debt_eth > U256::exp10(18));
+
+        println!("total_debt_eth: {}", total_debt_eth);
+        println!("total_debt_usdt: {}", loan.total_debt);
+
+        Ok(())
     }
 }

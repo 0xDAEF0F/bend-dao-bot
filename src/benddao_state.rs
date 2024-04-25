@@ -1,12 +1,18 @@
 use crate::{
-    constants::bend_dao::{BAYC_ADDRESS, HEALTH_FACTOR_THRESHOLD_TO_MONITOR, WRAPPED_CRYPTOPUNKS},
+    constants::bend_dao::{
+        BAYC_ADDRESS, HEALTH_FACTOR_THRESHOLD_TO_MONITOR, MAYC_ADDRESS, WRAPPED_CRYPTOPUNKS,
+    },
     data_source::DataSource,
     prices_client::PricesClient,
 };
 use anyhow::Result;
+use core::fmt;
 use ethers::types::U256;
 use log::{debug, info};
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    fmt::{Display, Formatter},
+};
 
 #[derive(Debug, PartialEq)]
 pub enum Status {
@@ -25,13 +31,24 @@ pub enum ReserveAsset {
 pub enum NftAsset {
     Bayc,
     CryptoPunks,
+    Mayc,
 }
-
-impl ToString for NftAsset {
-    fn to_string(&self) -> String {
+impl NftAsset {
+    pub fn checksummed_address(&self) -> String {
         match self {
             NftAsset::Bayc => BAYC_ADDRESS.to_string(),
             NftAsset::CryptoPunks => WRAPPED_CRYPTOPUNKS.to_string(),
+            NftAsset::Mayc => MAYC_ADDRESS.to_string(),
+        }
+    }
+}
+
+impl Display for NftAsset {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            NftAsset::Bayc => write!(f, "BAYC"),
+            NftAsset::CryptoPunks => write!(f, "CryptoPunks"),
+            NftAsset::Mayc => write!(f, "MAYC"),
         }
     }
 }
@@ -50,7 +67,7 @@ pub struct Loan {
     pub status: Status,
     pub nft_token_id: U256,
     pub health_factor: U256,
-    pub total_debt: U256,
+    pub total_debt: U256, // usdt scaled by 1e6 and eth scaled by 1e18
     pub reserve_asset: ReserveAsset,
     pub nft_asset: NftAsset,
 }
@@ -158,25 +175,26 @@ impl BendDao {
             info!("loan {} auctionable", loan_id.as_u64());
             // determine the profitability
 
-            let nft_price_eth = self
+            let best_bid = self
                 .prices_client
                 .get_best_nft_bid(updated_loan.nft_asset)
-                .await?;
+                .await?; // WEI
 
             let total_debt_eth = match updated_loan.reserve_asset {
                 ReserveAsset::Usdt => {
                     let usdt_eth_price = self.prices_client.get_usdt_eth_price().await?;
-                    updated_loan.total_debt * U256::exp10(18) / usdt_eth_price
+                    updated_loan.total_debt * usdt_eth_price / U256::exp10(6)
                 }
                 ReserveAsset::Weth => updated_loan.total_debt,
             };
 
-            if nft_price_eth < total_debt_eth {
-                info!("price of nft less than total debt");
-            } else {
-                let profit = nft_price_eth - total_debt_eth;
-                info!("potential profit of: {}", profit);
+            if best_bid < total_debt_eth {
+                info!("loan unpfrofitable");
+                continue;
             }
+
+            let profit = best_bid - total_debt_eth;
+            info!("potential profit: {}", profit);
         }
         Ok(())
     }

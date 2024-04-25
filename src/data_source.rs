@@ -1,8 +1,8 @@
 use crate::{
     benddao_state::{Loan, NftAsset, ReserveAsset, Status},
     constants::bend_dao::{
-        BAYC_ADDRESS, LEND_POOL, LEND_POOL_LOAN, NFT_ORACLE, RESERVE_ORACLE, USDT_ADDRESS,
-        WETH_ADDRESS, WRAPPED_CRYPTOPUNKS,
+        BAYC_ADDRESS, LEND_POOL, LEND_POOL_LOAN, MAYC_ADDRESS, NFT_ORACLE, RESERVE_ORACLE,
+        USDT_ADDRESS, WETH_ADDRESS, WRAPPED_CRYPTOPUNKS,
     },
     LendPool, LendPoolLoan, LoanData, NFTOracle, ReserveOracle,
 };
@@ -114,12 +114,15 @@ async fn get_loan_data(
     };
 
     let bayc = BAYC_ADDRESS.parse::<Address>()?;
+    let mayc = MAYC_ADDRESS.parse::<Address>()?;
     let crypto_punks = WRAPPED_CRYPTOPUNKS.parse::<Address>()?;
 
     let nft_asset = if loan_data.nft_asset == bayc {
         NftAsset::Bayc
     } else if loan_data.nft_asset == crypto_punks {
         NftAsset::CryptoPunks
+    } else if loan_data.nft_asset == mayc {
+        NftAsset::Mayc
     } else {
         // not interested
         return Ok(None);

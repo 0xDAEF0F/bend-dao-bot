@@ -1,75 +1,21 @@
+pub mod loan;
+
 use crate::{
-    constants::bend_dao::{
-        BAYC_ADDRESS, HEALTH_FACTOR_THRESHOLD_TO_MONITOR, MAYC_ADDRESS, WRAPPED_CRYPTOPUNKS,
-    },
+    benddao::loan::{Loan, ReserveAsset, Status},
+    constants::bend_dao::HEALTH_FACTOR_THRESHOLD_TO_MONITOR,
     data_source::DataSource,
     prices_client::PricesClient,
 };
 use anyhow::Result;
-use core::fmt;
 use ethers::types::U256;
 use log::{debug, info};
-use std::{
-    collections::{HashMap, HashSet},
-    fmt::{Display, Formatter},
-};
+use std::collections::{HashMap, HashSet};
 
-#[derive(Debug, PartialEq)]
-pub enum Status {
-    Created, // not sure about this state
-    Active,
-    Auction,
-}
-
-#[derive(Debug, PartialEq)]
-pub enum ReserveAsset {
-    Weth,
-    Usdt,
-}
-
-#[derive(Debug, PartialEq)]
-pub enum NftAsset {
-    Bayc,
-    CryptoPunks,
-    Mayc,
-}
-impl NftAsset {
-    pub fn checksummed_address(&self) -> String {
-        match self {
-            NftAsset::Bayc => BAYC_ADDRESS.to_string(),
-            NftAsset::CryptoPunks => WRAPPED_CRYPTOPUNKS.to_string(),
-            NftAsset::Mayc => MAYC_ADDRESS.to_string(),
-        }
-    }
-}
-
-impl Display for NftAsset {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            NftAsset::Bayc => write!(f, "BAYC"),
-            NftAsset::CryptoPunks => write!(f, "CryptoPunks"),
-            NftAsset::Mayc => write!(f, "MAYC"),
-        }
-    }
-}
-
-#[derive(Debug)]
 pub struct BendDao {
     loans: HashMap<U256, Loan>,
     monitored_loans: HashSet<U256>,
     data_source: DataSource,
     prices_client: PricesClient,
-}
-
-#[derive(Debug)]
-pub struct Loan {
-    pub loan_id: U256,
-    pub status: Status,
-    pub nft_token_id: U256,
-    pub health_factor: U256,
-    pub total_debt: U256, // usdt scaled by 1e6 and eth scaled by 1e18
-    pub reserve_asset: ReserveAsset,
-    pub nft_asset: NftAsset,
 }
 
 impl BendDao {

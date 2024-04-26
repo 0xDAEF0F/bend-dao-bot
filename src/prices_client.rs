@@ -1,5 +1,5 @@
 use crate::reservoir::floor_response::CollectionBidsResponse;
-use crate::{benddao_state::NftAsset, coinmarketcap::price_response::PriceResponse};
+use crate::{benddao::loan::NftAsset, coinmarketcap::price_response::PriceResponse};
 use anyhow::Result;
 use ethers::types::U256;
 use reqwest::{header::HeaderValue, Client};
@@ -17,10 +17,7 @@ impl PricesClient {
 
         let mut url: Url = "https://api.reservoir.tools".parse()?;
 
-        let path = format!(
-            "collections/{}/bids/v1",
-            nft_asset.checksummed_address().to_lowercase()
-        );
+        let path = format!("collections/{}/bids/v1", nft_asset.to_string());
         url.set_path(&path);
         url.set_query(Some("type=collection")); // collection wide bids
 
@@ -90,8 +87,9 @@ impl PricesClient {
 
 #[cfg(test)]
 mod tests {
+    use crate::{benddao::loan::Loan, data_source::DataSource};
+
     use super::*;
-    use crate::{benddao_state::Loan, data_source::DataSource};
 
     #[tokio::test]
     async fn test_get_best_nft_bid() {

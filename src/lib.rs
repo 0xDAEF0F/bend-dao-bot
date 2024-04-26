@@ -1,4 +1,4 @@
-pub mod benddao_state;
+pub mod benddao;
 pub mod coinmarketcap;
 pub mod constants;
 pub mod data_source;

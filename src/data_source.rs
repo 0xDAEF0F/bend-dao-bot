@@ -1,9 +1,6 @@
 use crate::{
-    benddao_state::{Loan, NftAsset, ReserveAsset, Status},
-    constants::bend_dao::{
-        BAYC_ADDRESS, LEND_POOL, LEND_POOL_LOAN, MAYC_ADDRESS, NFT_ORACLE, RESERVE_ORACLE,
-        USDT_ADDRESS, WETH_ADDRESS, WRAPPED_CRYPTOPUNKS,
-    },
+    benddao::loan::{Loan, NftAsset, ReserveAsset, Status},
+    constants::bend_dao::{LEND_POOL, LEND_POOL_LOAN, NFT_ORACLE, RESERVE_ORACLE},
     LendPool, LendPoolLoan, LoanData, NFTOracle, ReserveOracle,
 };
 use anyhow::Result;
@@ -12,10 +9,10 @@ use ethers::{
     types::{Address, U256},
 };
 use futures::future::join_all;
+use log::debug;
 use std::{ops::Range, sync::Arc};
 use tokio::task::JoinHandle;
 
-#[derive(Debug)]
 pub struct DataSource {
     pub provider: Arc<Provider<Http>>,
     pub lend_pool: LendPool<Provider<Http>>,
@@ -89,43 +86,28 @@ async fn get_loan_data(
 ) -> Result<Option<Loan>> {
     let loan_data: LoanData = lend_pool_loan.get_loan(loan_id).await?;
 
-    // repaid or defaulted
-    if loan_data.state == 4 || loan_data.state == 5 {
-        return Ok(None);
-    }
-
     let status = match loan_data.state {
         1 => Status::Created,
         2 => Status::Active,
         3 => Status::Auction,
+        0 | 4 | 5 => return Ok(None), // none || repaid || defaulted
         _ => panic!("invalid state"),
     };
 
-    let weth = WETH_ADDRESS.parse::<Address>()?;
-    let usdt = USDT_ADDRESS.parse::<Address>()?;
-
-    let reserve_asset = if loan_data.reserve_asset == weth {
-        ReserveAsset::Weth
-    } else if loan_data.reserve_asset == usdt {
-        ReserveAsset::Usdt
-    } else {
-        // not interested
-        return Ok(None);
+    let reserve_asset = match ReserveAsset::try_from(loan_data.reserve_asset) {
+        Ok(reserve_asset) => reserve_asset,
+        Err(e) => {
+            debug!("{e}");
+            return Ok(None);
+        }
     };
 
-    let bayc = BAYC_ADDRESS.parse::<Address>()?;
-    let mayc = MAYC_ADDRESS.parse::<Address>()?;
-    let crypto_punks = WRAPPED_CRYPTOPUNKS.parse::<Address>()?;
-
-    let nft_asset = if loan_data.nft_asset == bayc {
-        NftAsset::Bayc
-    } else if loan_data.nft_asset == crypto_punks {
-        NftAsset::CryptoPunks
-    } else if loan_data.nft_asset == mayc {
-        NftAsset::Mayc
-    } else {
-        // not interested
-        return Ok(None);
+    let nft_asset = match NftAsset::try_from(loan_data.nft_asset) {
+        Ok(nft_asset) => nft_asset,
+        Err(e) => {
+            debug!("{e}");
+            return Ok(None);
+        }
     };
 
     let (_, _, _, total_debt, _, health_factor) = lend_pool

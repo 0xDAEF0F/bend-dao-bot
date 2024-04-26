@@ -1,7 +1,7 @@
 use anyhow::Result;
 use bend_dao_collector::lend_pool::LendPool;
 use bend_dao_collector::LendPoolEvents;
-use bend_dao_collector::{benddao_state::BendDao, constants::bend_dao::LEND_POOL};
+use bend_dao_collector::{benddao::BendDao, constants::bend_dao::LEND_POOL};
 use dotenv::dotenv;
 use ethers::providers::Middleware;
 use ethers::{

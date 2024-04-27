@@ -10,10 +10,10 @@ use ethers::{
 };
 use futures::future::join_all;
 use log::debug;
-use std::{ops::Range, sync::Arc};
+use std::sync::Arc;
 use tokio::task::JoinHandle;
 
-pub struct DataSource {
+pub struct ChainProvider {
     pub provider: Arc<Provider<Http>>,
     pub lend_pool: LendPool<Provider<Http>>,
     pub lend_pool_loan: LendPoolLoan<Provider<Http>>,
@@ -21,8 +21,8 @@ pub struct DataSource {
     pub reserve_oracle: ReserveOracle<Provider<Http>>,
 }
 
-impl DataSource {
-    pub fn try_new(url: &str) -> Result<DataSource> {
+impl ChainProvider {
+    pub fn try_new(url: &str) -> Result<ChainProvider> {
         let provider = Provider::<Http>::try_from(url)?;
         let provider = Arc::new(provider);
 
@@ -38,7 +38,7 @@ impl DataSource {
         let address = RESERVE_ORACLE.parse::<Address>()?;
         let reserve_oracle = ReserveOracle::new(address, provider.clone());
 
-        Ok(DataSource {
+        Ok(ChainProvider {
             provider,
             lend_pool,
             lend_pool_loan,
@@ -47,7 +47,7 @@ impl DataSource {
         })
     }
 
-    pub async fn get_loans_range(&self, range: Range<u64>) -> Result<Vec<Loan>> {
+    pub async fn get_loans_from_iter(&self, range: impl Iterator<Item = u64>) -> Result<Vec<Loan>> {
         let mut handles = Vec::new();
         let mut loans: Vec<Loan> = Vec::new();
 
@@ -87,10 +87,11 @@ async fn get_loan_data(
     let loan_data: LoanData = lend_pool_loan.get_loan(loan_id).await?;
 
     let status = match loan_data.state {
+        0 => return Ok(None),
         1 => Status::Created,
         2 => Status::Active,
         3 => Status::Auction,
-        0 | 4 | 5 => return Ok(None), // none || repaid || defaulted
+        4 | 5 => Status::RepaidDefaulted,
         _ => panic!("invalid state"),
     };
 

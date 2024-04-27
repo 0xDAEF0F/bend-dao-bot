@@ -5,7 +5,7 @@ use ethers::types::U256;
 use reqwest::{header::HeaderValue, Client};
 use url::Url;
 
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub struct PricesClient {
     http_client: Client,
 }
@@ -16,8 +16,7 @@ impl PricesClient {
         let api_key = dotenv::var("RESERVOIR_API_KEY")?;
 
         let mut url: Url = "https://api.reservoir.tools".parse()?;
-
-        let path = format!("collections/{}/bids/v1", nft_asset.to_string());
+        let path = format!("collections/{}/bids/v1", nft_asset);
         url.set_path(&path);
         url.set_query(Some("type=collection")); // collection wide bids
 
@@ -87,7 +86,7 @@ impl PricesClient {
 
 #[cfg(test)]
 mod tests {
-    use crate::{benddao::loan::Loan, data_source::DataSource};
+    use crate::{benddao::loan::Loan, chain_provider::ChainProvider};
 
     use super::*;
 
@@ -104,7 +103,7 @@ mod tests {
     async fn test_get_profit_for_nft() -> Result<()> {
         let url = dotenv::var("MAINNET_RPC_URL")?;
 
-        let data_source = DataSource::try_new(&url)?;
+        let data_source = ChainProvider::try_new(&url)?;
         let prices_client = PricesClient::default();
 
         let loan_id = U256::from(13069); // token id: #3599

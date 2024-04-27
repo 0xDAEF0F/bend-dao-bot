@@ -1,7 +1,7 @@
 pub mod benddao;
+pub mod chain_provider;
 pub mod coinmarketcap;
 pub mod constants;
-pub mod data_source;
 pub mod math;
 pub mod prices_client;
 pub mod reservoir;

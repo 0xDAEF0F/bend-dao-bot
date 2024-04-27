@@ -2,19 +2,22 @@ pub mod loan;
 
 use crate::{
     benddao::loan::{Loan, ReserveAsset, Status},
-    constants::bend_dao::HEALTH_FACTOR_THRESHOLD_TO_MONITOR,
-    data_source::DataSource,
+    chain_provider::ChainProvider,
     prices_client::PricesClient,
 };
 use anyhow::Result;
 use ethers::types::U256;
 use log::{debug, info};
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
+use tokio::{
+    fs::File,
+    io::{AsyncReadExt, AsyncWriteExt},
+};
 
 pub struct BendDao {
     loans: HashMap<U256, Loan>,
     monitored_loans: HashSet<U256>,
-    data_source: DataSource,
+    chain_provider: ChainProvider,
     prices_client: PricesClient,
 }
 
@@ -24,13 +27,13 @@ impl BendDao {
         Ok(BendDao {
             monitored_loans: HashSet::new(),
             loans: HashMap::new(),
-            data_source: DataSource::try_new(&url)?,
+            chain_provider: ChainProvider::try_new(&url)?,
             prices_client: PricesClient::default(),
         })
     }
 
     pub async fn handle_repay_loan(&mut self, loan_id: U256) -> Result<()> {
-        match self.data_source.get_updated_loan(loan_id).await? {
+        match self.chain_provider.get_updated_loan(loan_id).await? {
             Some(loan) => {
                 // still active (partial repay)
                 self.handle_monitoring(&loan);
@@ -47,7 +50,7 @@ impl BendDao {
 
     pub async fn handle_auction(&mut self, loan_id: U256) -> Result<()> {
         let loan = self
-            .data_source
+            .chain_provider
             .get_updated_loan(loan_id)
             .await?
             .expect("loan should exist");
@@ -61,7 +64,7 @@ impl BendDao {
 
     pub async fn handle_borrow(&mut self, loan_id: U256) -> Result<()> {
         let loan = self
-            .data_source
+            .chain_provider
             .get_updated_loan(loan_id)
             .await?
             .expect("loan should exist");
@@ -75,7 +78,7 @@ impl BendDao {
 
     pub async fn handle_redeem(&mut self, loan_id: U256) -> Result<()> {
         let loan = self
-            .data_source
+            .chain_provider
             .get_updated_loan(loan_id)
             .await?
             .expect("loan should still be active");
@@ -99,7 +102,7 @@ impl BendDao {
             return;
         }
 
-        if loan.health_factor < U256::from_dec_str(HEALTH_FACTOR_THRESHOLD_TO_MONITOR).unwrap() {
+        if loan.should_monitor() {
             self.monitored_loans.insert(loan.loan_id);
         } else {
             self.monitored_loans.remove(&loan.loan_id);
@@ -111,7 +114,11 @@ impl BendDao {
         for loan_id in self.monitored_loans.iter() {
             info!("checking loan {} status", loan_id.as_u64());
 
-            let updated_loan = self.data_source.get_updated_loan(*loan_id).await?.unwrap();
+            let updated_loan = self
+                .chain_provider
+                .get_updated_loan(*loan_id)
+                .await?
+                .unwrap();
 
             if updated_loan.health_factor >= U256::exp10(18) {
                 info!("loan_id: {} above 1.0", loan_id.as_u64());
@@ -146,9 +153,13 @@ impl BendDao {
     }
 
     pub async fn build_all_loans(&mut self) -> Result<()> {
+        let mut repaid_defaulted_loans = get_repaid_defaulted_loans()
+            .await
+            .unwrap_or_else(|_| BTreeSet::new());
+
         // this loan has not yet existed so not inclusive range
         let last_loan_id: u64 = self
-            .data_source
+            .chain_provider
             .lend_pool_loan
             .get_current_loan_id()
             .await?
@@ -164,18 +175,46 @@ impl BendDao {
             })
             .unwrap_or(last_loan_id - 2);
 
-        let all_loans = self
-            .data_source
-            .get_loans_range(start_loan_id..last_loan_id)
-            .await?;
+        let iter = (start_loan_id..last_loan_id).filter(|x| !repaid_defaulted_loans.contains(x));
+        let all_loans = self.chain_provider.get_loans_from_iter(iter).await?;
 
         for loan in all_loans {
-            self.loans.insert(loan.loan_id, loan);
+            if loan.status == Status::RepaidDefaulted {
+                repaid_defaulted_loans.insert(loan.loan_id.as_u64());
+            } else {
+                self.loans.insert(loan.loan_id, loan);
+            }
         }
+
+        save_repaid_defaulted_loans(&repaid_defaulted_loans).await?;
 
         info!("all loans have been built");
         debug!("{:#?}", &self.loans);
 
         Ok(())
     }
+}
+
+async fn get_repaid_defaulted_loans() -> Result<BTreeSet<u64>> {
+    // if the file does not exist it will return Err
+    let mut file = File::open("data/repaid-defaulted.json").await?;
+    let mut json_string = String::new();
+
+    file.read_to_string(&mut json_string).await?;
+
+    let data: Vec<u64> = serde_json::from_str(&json_string)?;
+
+    Ok(BTreeSet::<u64>::from_iter(data))
+}
+
+async fn save_repaid_defaulted_loans(loans: &BTreeSet<u64>) -> Result<()> {
+    // will create the file or delete it's contents if it exists already
+    let mut file = File::create("data/repaid-defaulted.json").await?;
+
+    // if BTreeSet is empty it will just write `[]` to the json file
+    let data = serde_json::to_string(loans)?;
+
+    file.write_all(data.as_bytes()).await?;
+
+    Ok(())
 }

@@ -1,6 +1,7 @@
 use crate::constants::addresses::{
     BAYC_ADDRESS, MAYC_ADDRESS, USDT_ADDRESS, WETH_ADDRESS, WRAPPED_CRYPTOPUNKS,
 };
+use crate::constants::bend_dao::HEALTH_FACTOR_THRESHOLD_TO_MONITOR;
 use crate::prices_client::PricesClient;
 use anyhow::{bail, Result};
 use core::fmt;
@@ -29,6 +30,15 @@ impl Loan {
             }
         }
     }
+
+    pub fn is_auctionable(&self) -> bool {
+        self.health_factor < U256::exp10(18)
+    }
+
+    // less than a health factor of 1.05 returns true
+    pub fn should_monitor(&self) -> bool {
+        self.health_factor < HEALTH_FACTOR_THRESHOLD_TO_MONITOR.into()
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -36,6 +46,7 @@ pub enum Status {
     Created, // not sure about this state
     Active,
     Auction,
+    RepaidDefaulted,
 }
 
 #[derive(Debug, PartialEq)]

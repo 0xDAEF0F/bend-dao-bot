@@ -32,81 +32,37 @@ impl BendDao {
         })
     }
 
-    pub async fn handle_repay_loan(&mut self, loan_id: U256) -> Result<()> {
-        match self.chain_provider.get_updated_loan(loan_id).await? {
-            Some(loan) => {
-                // still active (partial repay)
-                self.handle_monitoring(&loan);
-                self.loans.insert(loan_id, loan);
-            }
-            None => {
-                // fully repaid
+    pub async fn update_loan_in_system(&mut self, loan_id: U256) -> Result<()> {
+        let loan = match self.chain_provider.get_updated_loan(loan_id).await? {
+            None => return Ok(()),
+            Some(l) => l,
+        };
+
+        match loan.status {
+            Status::RepaidDefaulted => {
+                // would be nice to update the data store, too but it's not that important.
+                // we can do that in the next synchronization of `build_all_loans`
                 self.loans.remove(&loan_id);
                 self.monitored_loans.remove(&loan_id);
+                return Ok(());
             }
+            Status::Auction => {
+                // remove from the system. if the loan is redeemed it will be added back
+                self.loans.remove(&loan_id);
+                self.monitored_loans.remove(&loan_id);
+                return Ok(());
+            }
+            _ => {}
         }
-        Ok(())
-    }
 
-    pub async fn handle_auction(&mut self, loan_id: U256) -> Result<()> {
-        let loan = self
-            .chain_provider
-            .get_updated_loan(loan_id)
-            .await?
-            .expect("loan should exist");
-
-        self.handle_monitoring(&loan);
+        match loan.should_monitor() {
+            true => self.monitored_loans.insert(loan_id),
+            false => self.monitored_loans.remove(&loan_id),
+        };
 
         self.loans.insert(loan_id, loan);
 
         Ok(())
-    }
-
-    pub async fn handle_borrow(&mut self, loan_id: U256) -> Result<()> {
-        let loan = self
-            .chain_provider
-            .get_updated_loan(loan_id)
-            .await?
-            .expect("loan should exist");
-
-        self.handle_monitoring(&loan);
-
-        self.loans.insert(loan_id, loan);
-
-        Ok(())
-    }
-
-    pub async fn handle_redeem(&mut self, loan_id: U256) -> Result<()> {
-        let loan = self
-            .chain_provider
-            .get_updated_loan(loan_id)
-            .await?
-            .expect("loan should still be active");
-
-        self.handle_monitoring(&loan);
-        self.loans.insert(loan_id, loan);
-
-        Ok(())
-    }
-
-    // take it off the system
-    pub fn handle_liquidation(&mut self, loan_id: U256) {
-        self.loans.remove(&loan_id);
-        self.monitored_loans.remove(&loan_id);
-    }
-
-    fn handle_monitoring(&mut self, loan: &Loan) {
-        // nothing to do here just take it off the monitoring list and return
-        if loan.status == Status::Auction {
-            self.monitored_loans.remove(&loan.loan_id);
-            return;
-        }
-
-        if loan.should_monitor() {
-            self.monitored_loans.insert(loan.loan_id);
-        } else {
-            self.monitored_loans.remove(&loan.loan_id);
-        }
     }
 
     pub async fn handle_new_block(&mut self) -> Result<()> {

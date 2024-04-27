@@ -65,24 +65,25 @@ fn task_one(
             let mut lock = bend_dao_state.lock().await;
             match evt {
                 LendPoolEvents::BorrowFilter(evt) => {
-                    // a loan has been created or borrowed more
-                    lock.handle_borrow(evt.loan_id).await?;
+                    // a loan has been created or re-borrowed more
+                    lock.update_loan_in_system(evt.loan_id).await?;
                 }
                 LendPoolEvents::RepayFilter(evt) => {
                     // repayment occured. either partial or total
-                    lock.handle_repay_loan(evt.loan_id).await?;
+                    lock.update_loan_in_system(evt.loan_id).await?;
                 }
                 LendPoolEvents::AuctionFilter(evt) => {
-                    // take out of loans and into pending auctions
-                    lock.handle_auction(evt.loan_id).await?;
-                }
-                LendPoolEvents::LiquidateFilter(evt) => {
-                    lock.handle_liquidation(evt.loan_id);
+                    lock.update_loan_in_system(evt.loan_id).await?;
                 }
                 LendPoolEvents::RedeemFilter(evt) => {
                     // loan has been partially repaid by owner and
-                    // moved from auctions to active
-                    lock.handle_redeem(evt.loan_id).await?;
+                    // moved from auctions to active again
+                    lock.update_loan_in_system(evt.loan_id).await?;
+                }
+                LendPoolEvents::LiquidateFilter(_evt) => {
+                    // not necessary to do anything because loan
+                    // was already taken off the system when the auction
+                    // happenened
                 }
                 _ => {}
             }

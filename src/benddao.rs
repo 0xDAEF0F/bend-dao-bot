@@ -7,7 +7,7 @@ use crate::{
 };
 use anyhow::Result;
 use ethers::types::U256;
-use log::{debug, info};
+use log::{debug, info, warn};
 use std::collections::{BTreeSet, HashMap, HashSet};
 use tokio::{
     fs::File,
@@ -66,23 +66,29 @@ impl BendDao {
     }
 
     pub async fn handle_new_block(&mut self) -> Result<()> {
-        info!("iterating on monitored_loans");
+        info!("checking on monitored_loans");
         for loan_id in self.monitored_loans.iter() {
-            info!("checking loan {} status", loan_id.as_u64());
-
             let updated_loan = self
                 .chain_provider
                 .get_updated_loan(*loan_id)
                 .await?
-                .unwrap();
+                .expect("loan in monitored_loans pool shouldn't be `None`");
 
-            if updated_loan.health_factor >= U256::exp10(18) {
-                info!("loan_id: {} above 1.0", loan_id.as_u64());
+            if updated_loan.status == Status::Auction {
+                warn!("loan_id: {loan_id} in monitored_loans transitioned to `Status::Auction`");
                 continue;
             }
 
-            info!("loan {} auctionable", loan_id.as_u64());
-            // determine the profitability
+            if !updated_loan.is_auctionable() {
+                info!(
+                    "loan_id: {} - health_factor: {:.2} - status: healthy",
+                    loan_id.as_u64(),
+                    updated_loan.health_factor()
+                );
+                continue;
+            }
+
+            info!("loan_id: {} - status: auctionable", loan_id);
 
             let best_bid = self
                 .prices_client
@@ -98,23 +104,31 @@ impl BendDao {
             };
 
             if best_bid < total_debt_eth {
-                info!("loan unpfrofitable");
+                let debt_human_readable = total_debt_eth.as_u128() as f64 / 1e18;
+                let best_bid_human_readable = best_bid.as_u128() as f64 / 1e18;
+                info!(
+                    "loan_id: {} unprofitable - total_debt: {:.2} > best_bid: {:.2}",
+                    loan_id, debt_human_readable, best_bid_human_readable
+                );
                 continue;
             }
 
-            let profit = best_bid - total_debt_eth;
-            info!("potential profit: {}", profit);
+            let potential_profit = (best_bid - total_debt_eth).as_u128() as f64 / 1e18;
+            info!(
+                "loan_id: {} - potential profit: {:.2}",
+                loan_id, potential_profit
+            );
         }
         Ok(())
     }
 
     pub async fn build_all_loans(&mut self) -> Result<()> {
-        let mut repaid_defaulted_loans = get_repaid_defaulted_loans()
+        let mut repaid_defaulted_loans_set = get_repaid_defaulted_loans()
             .await
             .unwrap_or_else(|_| BTreeSet::new());
 
         // this loan has not yet existed so not inclusive range
-        let last_loan_id: u64 = self
+        let end_loan_id: u64 = self
             .chain_provider
             .lend_pool_loan
             .get_current_loan_id()
@@ -126,26 +140,31 @@ impl BendDao {
                 if env.to_lowercase() == "production" {
                     1
                 } else {
-                    last_loan_id - 2
+                    end_loan_id - 2
                 }
             })
-            .unwrap_or(last_loan_id - 2);
+            .unwrap_or(end_loan_id - 2);
 
-        let iter = (start_loan_id..last_loan_id).filter(|x| !repaid_defaulted_loans.contains(x));
+        let iter = (start_loan_id..end_loan_id).filter(|x| !repaid_defaulted_loans_set.contains(x));
         let all_loans = self.chain_provider.get_loans_from_iter(iter).await?;
 
         for loan in all_loans {
             if loan.status == Status::RepaidDefaulted {
-                repaid_defaulted_loans.insert(loan.loan_id.as_u64());
-            } else {
+                repaid_defaulted_loans_set.insert(loan.loan_id.as_u64());
+            }
+
+            if loan.status != Status::Auction {
+                if loan.should_monitor() {
+                    self.monitored_loans.insert(loan.loan_id);
+                }
                 self.loans.insert(loan.loan_id, loan);
             }
         }
 
-        save_repaid_defaulted_loans(&repaid_defaulted_loans).await?;
+        save_repaid_defaulted_loans(&repaid_defaulted_loans_set).await?;
 
         info!("all loans have been built");
-        debug!("{:#?}", &self.loans);
+        debug!("{:?}", &self.loans);
 
         Ok(())
     }

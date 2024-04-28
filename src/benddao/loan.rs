@@ -39,6 +39,11 @@ impl Loan {
     pub fn should_monitor(&self) -> bool {
         self.health_factor < HEALTH_FACTOR_THRESHOLD_TO_MONITOR.into()
     }
+
+    // for displaying purposes
+    pub fn health_factor(&self) -> f64 {
+        self.health_factor.as_u64() as f64 / 1e18
+    }
 }
 
 #[derive(Debug, PartialEq)]

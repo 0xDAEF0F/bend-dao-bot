@@ -67,6 +67,9 @@ impl BendDao {
 
     pub async fn handle_new_block(&mut self) -> Result<()> {
         info!("checking on monitored_loans");
+
+        let mut pending_loan_ids_to_remove = Vec::new();
+
         for loan_id in self.monitored_loans.iter() {
             let updated_loan = self
                 .chain_provider
@@ -77,6 +80,10 @@ impl BendDao {
             if updated_loan.status == Status::Auction {
                 warn!("loan_id: {loan_id} in monitored_loans transitioned to `Status::Auction`");
                 continue;
+            }
+
+            if !updated_loan.should_monitor() {
+                pending_loan_ids_to_remove.push(updated_loan.loan_id);
             }
 
             if !updated_loan.is_auctionable() {
@@ -119,6 +126,11 @@ impl BendDao {
                 loan_id, potential_profit
             );
         }
+
+        for loan_id in pending_loan_ids_to_remove {
+            self.monitored_loans.remove(&loan_id);
+        }
+
         Ok(())
     }
 
@@ -179,7 +191,7 @@ async fn get_repaid_defaulted_loans() -> Result<BTreeSet<u64>> {
 
     let data: Vec<u64> = serde_json::from_str(&json_string)?;
 
-    Ok(BTreeSet::<u64>::from_iter(data))
+    Ok(BTreeSet::from_iter(data))
 }
 
 async fn save_repaid_defaulted_loans(loans: &BTreeSet<u64>) -> Result<()> {

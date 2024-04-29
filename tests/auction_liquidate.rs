@@ -2,11 +2,11 @@
 
 use anyhow::Result;
 use bend_dao_collector::{
-    chain_provider::get_loan_data,
     constants::{
         addresses::{CLONEX, WETH},
         bend_dao::{LEND_POOL, LEND_POOL_LOAN},
     },
+    global_provider::get_loan_data,
     Erc721, LendPool, LendPoolLoan, Weth,
 };
 use ethers::{

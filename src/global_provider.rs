@@ -1,30 +1,43 @@
 use crate::{
     benddao::loan::{Loan, NftAsset, ReserveAsset, Status},
     constants::bend_dao::{LEND_POOL, LEND_POOL_LOAN, NFT_ORACLE, RESERVE_ORACLE},
-    LendPool, LendPoolLoan, LoanData, NFTOracle, ReserveOracle,
+    ConfigVars, LendPool, LendPoolLoan, LoanData, NFTOracle, ReserveOracle,
 };
 use anyhow::Result;
 use ethers::{
-    providers::{Http, Provider},
+    core::k256::ecdsa::SigningKey,
+    middleware::SignerMiddleware,
+    providers::{JsonRpcClient, Middleware, Provider, Ws},
+    signers::{LocalWallet, Wallet},
     types::{Address, U256},
 };
 use futures::future::join_all;
-use log::debug;
-use std::sync::Arc;
+use log::{debug, info};
+use std::{str::FromStr, sync::Arc};
 use tokio::task::JoinHandle;
 
-pub struct ChainProvider {
-    pub provider: Arc<Provider<Http>>,
-    pub lend_pool: LendPool<Provider<Http>>,
-    pub lend_pool_loan: LendPoolLoan<Provider<Http>>,
-    pub nft_oracle: NFTOracle<Provider<Http>>,
-    pub reserve_oracle: ReserveOracle<Provider<Http>>,
+pub struct GlobalProvider {
+    pub provider: Arc<Provider<Ws>>,
+    pub signer_provider: SignerMiddleware<Arc<Provider<Ws>>, Wallet<SigningKey>>,
+    pub lend_pool: LendPool<Provider<Ws>>,
+    pub lend_pool_loan: LendPoolLoan<Provider<Ws>>,
+    pub nft_oracle: NFTOracle<Provider<Ws>>,
+    pub reserve_oracle: ReserveOracle<Provider<Ws>>,
 }
 
-impl ChainProvider {
-    pub fn try_new(url: &str) -> Result<ChainProvider> {
-        let provider = Provider::<Http>::try_from(url)?;
+impl GlobalProvider {
+    pub async fn try_new(config_vars: ConfigVars) -> Result<GlobalProvider> {
+        let provider = Provider::<Ws>::connect(&config_vars.wss_rpc_url).await?;
         let provider = Arc::new(provider);
+
+        info!("connected to provider at: {}", config_vars.wss_rpc_url);
+        info!(
+            "current block number: {}",
+            provider.get_block_number().await?
+        );
+
+        let local_wallet = LocalWallet::from_str(&config_vars.private_key)?;
+        let signer_provider = SignerMiddleware::new(provider.clone(), local_wallet);
 
         let address = LEND_POOL.parse::<Address>()?;
         let lend_pool = LendPool::new(address, provider.clone());
@@ -38,8 +51,9 @@ impl ChainProvider {
         let address = RESERVE_ORACLE.parse::<Address>()?;
         let reserve_oracle = ReserveOracle::new(address, provider.clone());
 
-        Ok(ChainProvider {
+        Ok(GlobalProvider {
             provider,
+            signer_provider,
             lend_pool,
             lend_pool_loan,
             nft_oracle,
@@ -79,11 +93,14 @@ impl ChainProvider {
     }
 }
 
-pub async fn get_loan_data(
+pub async fn get_loan_data<U>(
     loan_id: U256,
-    lend_pool: LendPool<Provider<Http>>,
-    lend_pool_loan: LendPoolLoan<Provider<Http>>,
-) -> Result<Option<Loan>> {
+    lend_pool: LendPool<Provider<U>>,
+    lend_pool_loan: LendPoolLoan<Provider<U>>,
+) -> Result<Option<Loan>>
+where
+    U: JsonRpcClient + 'static,
+{
     let loan_data: LoanData = lend_pool_loan.get_loan(loan_id).await?;
 
     let status = match loan_data.state {

@@ -1,21 +1,32 @@
 use crate::reservoir::floor_response::CollectionBidsResponse;
+use crate::ConfigVars;
 use crate::{benddao::loan::NftAsset, coinmarketcap::price_response::PriceResponse};
 use anyhow::Result;
 use ethers::types::U256;
 use reqwest::{header::HeaderValue, Client};
 use url::Url;
 
-#[derive(Default)]
+const RESERVOIR_BASE_URL: &str = "https://api.reservoir.tools";
+const COINMARKETCAP_BASE_URL: &str = "https://pro-api.coinmarketcap.com";
+
 pub struct PricesClient {
     http_client: Client,
+    reservoir_api_key: String,
+    coinmarketcap_api_key: String,
 }
 
 impl PricesClient {
+    pub fn new(config: ConfigVars) -> PricesClient {
+        PricesClient {
+            reservoir_api_key: config.reservoir_api_key,
+            coinmarketcap_api_key: config.coinmarketcap_api_key,
+            http_client: Client::new(),
+        }
+    }
+
     // price in ETH (1e18)
     pub async fn get_best_nft_bid(&self, nft_asset: NftAsset) -> Result<U256> {
-        let api_key = dotenv::var("RESERVOIR_API_KEY")?;
-
-        let mut url: Url = "https://api.reservoir.tools".parse()?;
+        let mut url: Url = RESERVOIR_BASE_URL.parse()?;
         let path = format!("collections/{}/bids/v1", nft_asset);
         url.set_path(&path);
         url.set_query(Some("type=collection")); // collection wide bids
@@ -23,7 +34,7 @@ impl PricesClient {
         let res = self
             .http_client
             .get(url)
-            .header("x-api-key", HeaderValue::from_str(&api_key)?)
+            .header("x-api-key", HeaderValue::from_str(&self.reservoir_api_key)?)
             .send()
             .await?;
         let res: CollectionBidsResponse = res.json().await?;
@@ -44,16 +55,14 @@ impl PricesClient {
     }
 
     async fn get_eth_usd_price(&self) -> Result<f64> {
-        let api_key = dotenv::var("COINMARKETCAP_API_KEY")?;
-
-        let mut url: Url = "https://pro-api.coinmarketcap.com".parse()?;
+        let mut url: Url = COINMARKETCAP_BASE_URL.parse()?;
         url.set_path("v2/cryptocurrency/quotes/latest");
         url.set_query(Some("id=1027"));
 
         let res = self
             .http_client
             .get(url)
-            .header("X-CMC_PRO_API_KEY", api_key)
+            .header("X-CMC_PRO_API_KEY", &self.coinmarketcap_api_key)
             .header("Accept", "application/json")
             .send()
             .await?;
@@ -64,16 +73,14 @@ impl PricesClient {
     }
 
     async fn get_usdt_usd_price(&self) -> Result<f64> {
-        let api_key = dotenv::var("COINMARKETCAP_API_KEY")?;
-
-        let mut url: Url = "https://pro-api.coinmarketcap.com".parse()?;
+        let mut url: Url = COINMARKETCAP_BASE_URL.parse()?;
         url.set_path("v2/cryptocurrency/quotes/latest");
         url.set_query(Some("id=825"));
 
         let res = self
             .http_client
             .get(url)
-            .header("X-CMC_PRO_API_KEY", api_key)
+            .header("X-CMC_PRO_API_KEY", &self.coinmarketcap_api_key)
             .header("Accept", "application/json")
             .send()
             .await?;
@@ -86,25 +93,28 @@ impl PricesClient {
 
 #[cfg(test)]
 mod tests {
-    use crate::{benddao::loan::Loan, chain_provider::ChainProvider};
+    use crate::{benddao::loan::Loan, global_provider::GlobalProvider};
 
     use super::*;
 
     #[tokio::test]
-    async fn test_get_best_nft_bid() {
-        let client = PricesClient::default();
+    async fn test_get_best_nft_bid() -> Result<()> {
+        let config_vars = ConfigVars::try_new()?;
+        let client = PricesClient::new(config_vars);
 
         let price = client.get_best_nft_bid(NftAsset::Bayc).await.unwrap();
 
         assert!(price > U256::zero());
+
+        Ok(())
     }
 
     #[tokio::test]
     async fn test_get_profit_for_nft() -> Result<()> {
-        let url = dotenv::var("MAINNET_RPC_URL")?;
+        let config_vars = ConfigVars::try_new()?;
 
-        let data_source = ChainProvider::try_new(&url)?;
-        let prices_client = PricesClient::default();
+        let data_source = GlobalProvider::try_new(config_vars.clone()).await?;
+        let prices_client = PricesClient::new(config_vars.clone());
 
         let loan_id = U256::from(13069); // token id: #3599
         let loan: Loan = data_source.get_updated_loan(loan_id).await?.unwrap();

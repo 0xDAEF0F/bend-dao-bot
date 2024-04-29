@@ -2,13 +2,20 @@ pub mod loan;
 
 use crate::{
     benddao::loan::{Loan, ReserveAsset, Status},
-    chain_provider::ChainProvider,
+    global_provider::GlobalProvider,
     prices_client::PricesClient,
+    ConfigVars,
 };
 use anyhow::Result;
-use ethers::types::U256;
+use ethers::{
+    providers::{Provider, Ws},
+    types::U256,
+};
 use log::{debug, info, warn};
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::{
+    collections::{BTreeSet, HashMap, HashSet},
+    sync::Arc,
+};
 use tokio::{
     fs::File,
     io::{AsyncReadExt, AsyncWriteExt},
@@ -17,23 +24,26 @@ use tokio::{
 pub struct BendDao {
     loans: HashMap<U256, Loan>,
     monitored_loans: HashSet<U256>,
-    chain_provider: ChainProvider,
+    global_provider: GlobalProvider,
     prices_client: PricesClient,
 }
 
 impl BendDao {
-    pub fn try_new() -> Result<BendDao> {
-        let url = dotenv::var("MAINNET_RPC_URL")?;
+    pub async fn try_new(config_vars: ConfigVars) -> Result<BendDao> {
         Ok(BendDao {
             monitored_loans: HashSet::new(),
             loans: HashMap::new(),
-            chain_provider: ChainProvider::try_new(&url)?,
-            prices_client: PricesClient::default(),
+            global_provider: GlobalProvider::try_new(config_vars.clone()).await?,
+            prices_client: PricesClient::new(config_vars),
         })
     }
 
+    pub fn get_provider(&self) -> Arc<Provider<Ws>> {
+        self.global_provider.provider.clone()
+    }
+
     pub async fn update_loan_in_system(&mut self, loan_id: U256) -> Result<()> {
-        let loan = match self.chain_provider.get_updated_loan(loan_id).await? {
+        let loan = match self.global_provider.get_updated_loan(loan_id).await? {
             None => return Ok(()),
             Some(l) => l,
         };
@@ -72,7 +82,7 @@ impl BendDao {
 
         for loan_id in self.monitored_loans.iter() {
             let updated_loan = self
-                .chain_provider
+                .global_provider
                 .get_updated_loan(*loan_id)
                 .await?
                 .expect("loan in monitored_loans pool shouldn't be `None`");
@@ -141,7 +151,7 @@ impl BendDao {
 
         // this loan has not yet existed so not inclusive range
         let end_loan_id: u64 = self
-            .chain_provider
+            .global_provider
             .lend_pool_loan
             .get_current_loan_id()
             .await?
@@ -158,7 +168,7 @@ impl BendDao {
             .unwrap_or(end_loan_id - 2);
 
         let iter = (start_loan_id..end_loan_id).filter(|x| !repaid_defaulted_loans_set.contains(x));
-        let all_loans = self.chain_provider.get_loans_from_iter(iter).await?;
+        let all_loans = self.global_provider.get_loans_from_iter(iter).await?;
 
         for loan in all_loans {
             if loan.status == Status::RepaidDefaulted {
@@ -183,7 +193,7 @@ impl BendDao {
 
     pub async fn refresh_all_loans(&mut self) -> Result<()> {
         let iter = self.loans.keys().map(|k| k.as_u64());
-        let loans = self.chain_provider.get_loans_from_iter(iter).await?;
+        let loans = self.global_provider.get_loans_from_iter(iter).await?;
 
         for loan in loans {
             if loan.status == Status::RepaidDefaulted || loan.status == Status::Auction {

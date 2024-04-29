@@ -1,7 +1,7 @@
 use anyhow::Result;
 use bend_dao_collector::lend_pool::LendPool;
-use bend_dao_collector::LendPoolEvents;
 use bend_dao_collector::{benddao::BendDao, constants::bend_dao::LEND_POOL};
+use bend_dao_collector::{ConfigVars, LendPoolEvents};
 use dotenv::dotenv;
 use ethers::providers::Middleware;
 use ethers::{
@@ -9,7 +9,7 @@ use ethers::{
     types::Address,
 };
 use futures::future::join_all;
-use log::{debug, info};
+use log::info;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
@@ -20,19 +20,11 @@ async fn main() -> Result<()> {
     dotenv()?;
     env_logger::init();
 
-    let wss_url = std::env::var("MAINNET_RPC_URL_WS")?;
+    let config_vars = ConfigVars::try_new()?;
 
-    debug!("wss_url: {wss_url}");
+    let mut bend_dao = BendDao::try_new(config_vars.clone()).await?;
 
-    let provider = Provider::<Ws>::connect(wss_url).await?;
-    let provider = Arc::new(provider);
-
-    info!(
-        "current block number is: {}",
-        provider.get_block_number().await?
-    );
-
-    let mut bend_dao = BendDao::try_new()?;
+    let provider = bend_dao.get_provider();
 
     bend_dao.build_all_loans().await?;
 
@@ -44,7 +36,7 @@ async fn main() -> Result<()> {
 
     join_all([task_one_handle, task_two_handle, task_three_handle]).await;
 
-    info!("ending bot");
+    info!("bot is shutting down");
 
     Ok(())
 }

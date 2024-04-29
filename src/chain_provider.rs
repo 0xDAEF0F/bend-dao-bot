@@ -79,7 +79,7 @@ impl ChainProvider {
     }
 }
 
-async fn get_loan_data(
+pub async fn get_loan_data(
     loan_id: U256,
     lend_pool: LendPool<Provider<Http>>,
     lend_pool_loan: LendPoolLoan<Provider<Http>>,

@@ -182,7 +182,7 @@ impl BendDao {
     }
 
     pub async fn refresh_all_loans(&mut self) -> Result<()> {
-        let iter = self.loans.iter().map(|(k, _)| k.as_u64());
+        let iter = self.loans.keys().map(|k| k.as_u64());
         let loans = self.chain_provider.get_loans_from_iter(iter).await?;
 
         for loan in loans {

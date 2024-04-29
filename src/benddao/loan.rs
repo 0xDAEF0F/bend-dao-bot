@@ -1,6 +1,4 @@
-use crate::constants::addresses::{
-    BAYC_ADDRESS, MAYC_ADDRESS, USDT_ADDRESS, WETH_ADDRESS, WRAPPED_CRYPTOPUNKS,
-};
+use crate::constants::addresses::{BAYC, CLONEX, CRYPTOPUNKS, MAYC, USDT, WETH};
 use crate::constants::bend_dao::HEALTH_FACTOR_THRESHOLD_TO_MONITOR;
 use crate::prices_client::PricesClient;
 use anyhow::{bail, Result};
@@ -66,8 +64,8 @@ impl TryFrom<Address> for ReserveAsset {
     fn try_from(value: Address) -> Result<Self, Self::Error> {
         let addr = format!("{:?}", value);
         match addr.as_str() {
-            WETH_ADDRESS => Ok(Self::Weth),
-            USDT_ADDRESS => Ok(Self::Usdt),
+            WETH => Ok(Self::Weth),
+            USDT => Ok(Self::Usdt),
             _ => bail!("could not convert from Address: {} to ReserveAsset", value),
         }
     }
@@ -76,8 +74,8 @@ impl TryFrom<Address> for ReserveAsset {
 impl Display for ReserveAsset {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            ReserveAsset::Usdt => write!(f, "{USDT_ADDRESS}"),
-            ReserveAsset::Weth => write!(f, "{WETH_ADDRESS}"),
+            ReserveAsset::Usdt => write!(f, "{USDT}"),
+            ReserveAsset::Weth => write!(f, "{WETH}"),
         }
     }
 }
@@ -87,6 +85,7 @@ pub enum NftAsset {
     Bayc,
     CryptoPunks,
     Mayc,
+    CloneX,
 }
 
 impl TryFrom<Address> for NftAsset {
@@ -95,9 +94,10 @@ impl TryFrom<Address> for NftAsset {
     fn try_from(value: Address) -> Result<NftAsset, Self::Error> {
         let addr = format!("{:?}", value);
         match addr.as_str() {
-            BAYC_ADDRESS => Ok(Self::Bayc),
-            WRAPPED_CRYPTOPUNKS => Ok(Self::CryptoPunks),
-            MAYC_ADDRESS => Ok(Self::Mayc),
+            BAYC => Ok(Self::Bayc),
+            CRYPTOPUNKS => Ok(Self::CryptoPunks),
+            MAYC => Ok(Self::Mayc),
+            CLONEX => Ok(Self::CloneX),
             _ => bail!("could not convert from Address: {} to NftAsset", value),
         }
     }
@@ -106,9 +106,10 @@ impl TryFrom<Address> for NftAsset {
 impl Display for NftAsset {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            NftAsset::Bayc => write!(f, "{BAYC_ADDRESS}"),
-            NftAsset::CryptoPunks => write!(f, "{WRAPPED_CRYPTOPUNKS}"),
-            NftAsset::Mayc => write!(f, "{MAYC_ADDRESS}"),
+            NftAsset::Bayc => write!(f, "{BAYC}"),
+            NftAsset::CryptoPunks => write!(f, "{CRYPTOPUNKS}"),
+            NftAsset::Mayc => write!(f, "{MAYC}"),
+            NftAsset::CloneX => write!(f, "{CLONEX}"),
         }
     }
 }

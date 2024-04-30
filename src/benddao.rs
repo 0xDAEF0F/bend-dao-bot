@@ -90,6 +90,10 @@ impl BendDao {
             Some(l) => l,
         };
 
+        if !loan.nft_asset.is_allowed_in_production() {
+            return Ok(());
+        }
+
         match loan.status {
             Status::RepaidDefaulted => {
                 // would be nice to update the data store, too but it's not that important.

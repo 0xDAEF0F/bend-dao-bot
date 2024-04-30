@@ -1,4 +1,5 @@
 use anyhow::Result;
+use bend_dao_collector::benddao::loan::NftAsset;
 use bend_dao_collector::lend_pool::LendPool;
 use bend_dao_collector::{benddao::BendDao, constants::bend_dao::LEND_POOL};
 use bend_dao_collector::{ConfigVars, LendPoolEvents};
@@ -66,24 +67,34 @@ fn task_one(
             let mut bd_lock = bend_dao_state.lock().await;
             match evt {
                 LendPoolEvents::BorrowFilter(evt) => {
-                    // a loan has been created or re-borrowed more
-                    bd_lock.update_loan_in_system(evt.loan_id).await?;
+                    if let Ok(_) = NftAsset::try_from(evt.nft_asset) {
+                        // a loan has been created or re-borrowed more
+                        bd_lock.update_loan_in_system(evt.loan_id).await?;
+                    }
                 }
                 LendPoolEvents::RepayFilter(evt) => {
-                    // repayment occured. either partial or total
-                    bd_lock.update_loan_in_system(evt.loan_id).await?;
+                    if let Ok(_) = NftAsset::try_from(evt.nft_asset) {
+                        // repayment occured. either partial or total
+                        bd_lock.update_loan_in_system(evt.loan_id).await?;
+                    }
                 }
                 LendPoolEvents::AuctionFilter(evt) => {
-                    bd_lock.update_loan_in_system(evt.loan_id).await?;
+                    if let Ok(_) = NftAsset::try_from(evt.nft_asset) {
+                        bd_lock.update_loan_in_system(evt.loan_id).await?;
+                    }
                 }
                 LendPoolEvents::RedeemFilter(evt) => {
-                    // loan has been partially repaid by owner and
-                    // moved from auctions to active again
-                    bd_lock.update_loan_in_system(evt.loan_id).await?;
+                    if let Ok(_) = NftAsset::try_from(evt.nft_asset) {
+                        // loan has been partially repaid by owner and
+                        // moved from auctions to active again
+                        bd_lock.update_loan_in_system(evt.loan_id).await?;
+                    }
                 }
                 LendPoolEvents::LiquidateFilter(evt) => {
-                    // loan was already taken off the system when the auction happened
-                    info!("loan was liquidated in benddao. loan_id: {}", evt.loan_id);
+                    if let Ok(nft_asset) = NftAsset::try_from(evt.nft_asset) {
+                        // loan was already taken off the system when the auction happened
+                        info!("{:?} #{} liquidated", nft_asset, evt.nft_token_id);
+                    }
                 }
                 _ => {}
             }

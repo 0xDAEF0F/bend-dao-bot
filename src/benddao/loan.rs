@@ -1,4 +1,6 @@
-use crate::constants::addresses::{BAYC, CLONEX, CRYPTOPUNKS, MAYC, USDT, WETH};
+use crate::constants::addresses::{
+    BAYC, CLONEX, CRYPTOPUNKS, MAYC, PUDGY_PENGUINS, STBAYC, USDT, WETH,
+};
 use crate::constants::bend_dao::HEALTH_FACTOR_THRESHOLD_TO_MONITOR;
 use crate::prices_client::PricesClient;
 use anyhow::{bail, Result};
@@ -86,6 +88,21 @@ pub enum NftAsset {
     CryptoPunks,
     Mayc,
     CloneX,
+    PudgyPenguins,
+    StBayc,
+}
+
+impl NftAsset {
+    pub fn is_allowed_in_production(&self) -> bool {
+        match self {
+            NftAsset::CryptoPunks => true,
+            NftAsset::Bayc => true,
+            NftAsset::StBayc => true,
+            NftAsset::CloneX => false,
+            NftAsset::PudgyPenguins => false,
+            NftAsset::Mayc => false,
+        }
+    }
 }
 
 impl TryFrom<Address> for NftAsset {
@@ -98,6 +115,8 @@ impl TryFrom<Address> for NftAsset {
             CRYPTOPUNKS => Ok(Self::CryptoPunks),
             MAYC => Ok(Self::Mayc),
             CLONEX => Ok(Self::CloneX),
+            STBAYC => Ok(Self::StBayc),
+            PUDGY_PENGUINS => Ok(Self::PudgyPenguins),
             _ => bail!("could not convert from Address: {} to NftAsset", value),
         }
     }
@@ -110,6 +129,8 @@ impl Display for NftAsset {
             NftAsset::CryptoPunks => write!(f, "{CRYPTOPUNKS}"),
             NftAsset::Mayc => write!(f, "{MAYC}"),
             NftAsset::CloneX => write!(f, "{CLONEX}"),
+            NftAsset::PudgyPenguins => write!(f, "{PUDGY_PENGUINS}"),
+            NftAsset::StBayc => write!(f, "{STBAYC}"),
         }
     }
 }

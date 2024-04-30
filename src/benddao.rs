@@ -1,7 +1,7 @@
 pub mod loan;
 
 use crate::{
-    benddao::loan::{Loan, ReserveAsset, Status},
+    benddao::loan::{Loan, NftAsset, ReserveAsset, Status},
     global_provider::GlobalProvider,
     prices_client::PricesClient,
     ConfigVars,
@@ -98,14 +98,18 @@ impl BendDao {
 
             if !updated_loan.is_auctionable() {
                 info!(
-                    "loan_id: {} - health_factor: {:.2} - status: healthy",
-                    loan_id.as_u64(),
+                    "{:?} #{} | health_factor: {:.2} | status: HEALTHY",
+                    updated_loan.nft_asset,
+                    updated_loan.nft_token_id,
                     updated_loan.health_factor()
                 );
                 continue;
             }
 
-            info!("loan_id: {} - status: auctionable", loan_id);
+            info!(
+                "{:?} #{} | status: AUCTIONABLE",
+                updated_loan.nft_asset, updated_loan.nft_token_id
+            );
 
             let best_bid = self
                 .prices_client
@@ -135,8 +139,11 @@ impl BendDao {
                 let debt_human_readable = total_debt_eth.as_u128() as f64 / 1e18;
                 let best_bid_human_readable = best_bid.as_u128() as f64 / 1e18;
                 info!(
-                    "loan_id: {} unprofitable - total_debt: {:.2} > best_bid: {:.2}",
-                    loan_id, debt_human_readable, best_bid_human_readable
+                    "{:?} #{} unprofitable | total_debt: {:.2} > best_bid: {:.2}",
+                    updated_loan.nft_asset,
+                    updated_loan.nft_token_id,
+                    debt_human_readable,
+                    best_bid_human_readable
                 );
                 continue;
             }
@@ -144,27 +151,28 @@ impl BendDao {
             let potential_profit =
                 (best_bid - total_debt_eth - premium_bid).as_u128() as f64 / 1e18;
             info!(
-                "loan_id: {} - potential profit: {:.2}",
-                loan_id, potential_profit
+                "{:?} #{} - potential profit: {:.2} ETH",
+                updated_loan.nft_asset, updated_loan.nft_token_id, potential_profit
             );
 
             let balances = self.global_provider.balances().await?;
 
             if balances.weth >= total_debt_eth + premium_bid {
-                let bid_price = total_debt_eth + premium_bid;
-                match self
-                    .global_provider
-                    .start_auction(&updated_loan, bid_price)
-                    .await
-                {
-                    Ok(()) => info!("started auction successfully"),
-                    Err(e) => {
-                        error!("failed to start auction");
-                        error!("{e}");
-                    }
-                }
+                // let bid_price = total_debt_eth + premium_bid;
+                // match self
+                //     .global_provider
+                //     .start_auction(&updated_loan, bid_price)
+                //     .await
+                // {
+                //     Ok(()) => info!("started auction successfully"),
+                //     Err(e) => {
+                //         error!("failed to start auction");
+                //         error!("{e}");
+                //     }
+                // }
+                warn!("uninmplemented1")
             } else if balances.eth + balances.weth >= total_debt_eth + premium_bid {
-                // can wrap some eth to complete txn
+                warn!("uninmplemented2")
             } else {
                 warn!("not enough funds to trigger an auction")
             }
@@ -201,14 +209,23 @@ impl BendDao {
             .unwrap_or(end_loan_id - 2);
 
         let iter = (start_loan_id..end_loan_id).filter(|x| !repaid_defaulted_loans_set.contains(x));
+
+        info!("querying information for {} loans", iter.clone().count());
+
         let all_loans = self.global_provider.get_loans_from_iter(iter).await?;
 
         for loan in all_loans {
-            if loan.status == Status::RepaidDefaulted {
-                repaid_defaulted_loans_set.insert(loan.loan_id.as_u64());
+            // collections not allowed to trade in production
+            if !loan.nft_asset.is_allowed_in_production() {
+                continue;
             }
 
-            if loan.status != Status::Auction {
+            if loan.status == Status::RepaidDefaulted {
+                repaid_defaulted_loans_set.insert(loan.loan_id.as_u64());
+                continue;
+            }
+
+            if loan.status == Status::Active {
                 if loan.should_monitor() {
                     self.monitored_loans.insert(loan.loan_id);
                 }
@@ -218,7 +235,11 @@ impl BendDao {
 
         save_repaid_defaulted_loans(&repaid_defaulted_loans_set).await?;
 
-        info!("all loans have been built");
+        info!("a total of {} loans have been indexed", self.loans.len());
+        info!(
+            "a total of {} loans are set for monitoring",
+            self.monitored_loans.len()
+        );
         debug!("{:?}", &self.loans);
 
         Ok(())

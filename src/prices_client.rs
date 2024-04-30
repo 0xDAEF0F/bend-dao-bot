@@ -26,6 +26,10 @@ impl PricesClient {
 
     // price in ETH (1e18)
     pub async fn get_best_nft_bid(&self, nft_asset: NftAsset) -> Result<U256> {
+        let nft_asset = match nft_asset {
+            NftAsset::StBayc => NftAsset::Bayc,
+            nft_asset => nft_asset,
+        };
         let mut url: Url = RESERVOIR_BASE_URL.parse()?;
         let path = format!("collections/{}/bids/v1", nft_asset);
         url.set_path(&path);

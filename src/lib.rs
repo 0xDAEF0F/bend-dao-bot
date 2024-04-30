@@ -20,7 +20,7 @@ abigen!(Erc721, "abi/ERC721.json");
 #[derive(Clone)]
 pub struct ConfigVars {
     pub wss_rpc_url: String,
-    pub private_key: String,
+    pub mnemonic: String,
     pub reservoir_api_key: String,
     pub coinmarketcap_api_key: String,
 }
@@ -30,13 +30,13 @@ impl ConfigVars {
         dotenv()?;
 
         let wss_rpc_url = std::env::var("MAINNET_RPC_URL_WS")?;
-        let private_key = std::env::var("PRIVATE_KEY")?;
+        let mnemonic = std::env::var("MNEMONIC")?;
         let reservoir_api_key = std::env::var("RESERVOIR_API_KEY")?;
         let coinmarketcap_api_key = std::env::var("COINMARKETCAP_API_KEY")?;
 
         let config_vars = ConfigVars {
             wss_rpc_url,
-            private_key,
+            mnemonic,
             reservoir_api_key,
             coinmarketcap_api_key,
         };

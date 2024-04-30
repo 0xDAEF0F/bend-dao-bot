@@ -134,7 +134,8 @@ fn task_four(bend_dao_state: Arc<Mutex<BendDao>>) -> JoinHandle<Result<()>> {
         loop {
             {
                 info!("refreshing the balances of the wallet");
-                bend_dao_state.lock().await.update_balances().await?;
+                let mut bend_dao = bend_dao_state.lock().await;
+                bend_dao.update_balances().await?;
             }
             sleep(Duration::from_secs(60 * 60)).await;
         }

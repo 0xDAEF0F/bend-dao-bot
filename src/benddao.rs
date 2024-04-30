@@ -3,10 +3,9 @@ pub mod loan;
 
 use crate::{
     benddao::balances::Balances,
-    benddao::loan::{Loan, NftAsset, ReserveAsset, Status},
+    benddao::loan::{Loan, ReserveAsset, Status},
     constants::bend_dao::LEND_POOL,
     global_provider::GlobalProvider,
-    lend_pool,
     prices_client::PricesClient,
     ConfigVars,
 };
@@ -15,6 +14,7 @@ use ethers::{
     providers::{Middleware, Provider, Ws},
     signers::Signer,
     types::{Address, U256},
+    utils::format_ether,
 };
 use log::{debug, error, info, warn};
 use std::{
@@ -175,15 +175,20 @@ impl BendDao {
                 continue;
             }
 
-            let potential_profit = (best_bid - bidding_amount).as_u128() as f64 / 1e18;
-
+            let potential_profit = format_ether(best_bid - bidding_amount);
+            let potential_profit = potential_profit
+                .parse::<f64>()
+                .expect("unable to convert ETH to f64");
             info!(
-                "{:?} #{} - potential profit: {:.2} ETH",
+                "{:?} #{} - potential profit: {:.4} ETH",
                 updated_loan.nft_asset, updated_loan.nft_token_id, potential_profit
             );
 
             if updated_loan.reserve_asset == ReserveAsset::Usdt {
-                warn!("USDT currently not supported. Missing opportunity");
+                warn!(
+                    "USDT currently not supported. Missing {} ETH opportunity",
+                    potential_profit
+                );
                 continue;
             }
 
@@ -330,7 +335,9 @@ async fn save_repaid_defaulted_loans(loans: &BTreeSet<u64>) -> Result<()> {
     Ok(())
 }
 
+// TODO: refine the calculation
 // 40% / 365 days = 0.11% (so we take into account the interest in the next 24 hours until we liquidate)
-fn calculate_bidding_amount(total_debt: U256) -> U256 {
-    total_debt * U256::from(11) / U256::from(10_000)
+// total_debt + 0.11% * total_debt
+pub fn calculate_bidding_amount(total_debt: U256) -> U256 {
+    total_debt + (total_debt * U256::from(11) / U256::from(10_000))
 }

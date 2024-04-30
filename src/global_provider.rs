@@ -11,12 +11,12 @@ use ethers::{
     core::k256::ecdsa::SigningKey,
     middleware::SignerMiddleware,
     providers::{JsonRpcClient, Middleware, Provider, Ws},
-    signers::{LocalWallet, Signer, Wallet},
+    signers::{coins_bip39::English, LocalWallet, MnemonicBuilder, Signer, Wallet},
     types::{Address, U256},
 };
 use futures::future::join_all;
 use log::{debug, info};
-use std::{str::FromStr, sync::Arc};
+use std::sync::Arc;
 use tokio::task::JoinHandle;
 
 pub struct GlobalProvider {
@@ -42,7 +42,10 @@ impl GlobalProvider {
             provider.get_block_number().await?
         );
 
-        let local_wallet = LocalWallet::from_str(&config_vars.private_key)?;
+        let local_wallet = MnemonicBuilder::<English>::default()
+            .phrase(config_vars.mnemonic.as_str())
+            .build()?;
+
         let signer_provider = SignerMiddleware::new(provider.clone(), local_wallet.clone());
         let signer_provider = Arc::new(signer_provider);
 

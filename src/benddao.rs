@@ -11,7 +11,7 @@ use ethers::{
     providers::{Provider, Ws},
     types::U256,
 };
-use log::{debug, info, warn};
+use log::{debug, error, info, warn};
 use std::{
     collections::{BTreeSet, HashMap, HashSet},
     sync::Arc,
@@ -115,12 +115,23 @@ impl BendDao {
             let total_debt_eth = match updated_loan.reserve_asset {
                 ReserveAsset::Usdt => {
                     let usdt_eth_price = self.prices_client.get_usdt_eth_price().await?;
-                    updated_loan.total_debt * usdt_eth_price / U256::exp10(6)
+                    let total_debt_eth = updated_loan.total_debt * usdt_eth_price / U256::exp10(6);
+                    if best_bid > total_debt_eth {
+                        warn!("missing opportunity to buy {}", updated_loan.nft_asset);
+                        warn!(
+                            "best bid: {} > total_debt_eth: {}",
+                            best_bid, total_debt_eth
+                        );
+                    }
+                    continue;
                 }
                 ReserveAsset::Weth => updated_loan.total_debt,
             };
 
-            if best_bid < total_debt_eth {
+            // 40% / 365 days = 0.11% (so we take into account the interest in the next 24 hours until we liquidate)
+            let premium_bid = total_debt_eth * U256::from(11) / U256::from(10_000);
+
+            if best_bid < total_debt_eth + premium_bid {
                 let debt_human_readable = total_debt_eth.as_u128() as f64 / 1e18;
                 let best_bid_human_readable = best_bid.as_u128() as f64 / 1e18;
                 info!(
@@ -130,11 +141,33 @@ impl BendDao {
                 continue;
             }
 
-            let potential_profit = (best_bid - total_debt_eth).as_u128() as f64 / 1e18;
+            let potential_profit =
+                (best_bid - total_debt_eth - premium_bid).as_u128() as f64 / 1e18;
             info!(
                 "loan_id: {} - potential profit: {:.2}",
                 loan_id, potential_profit
             );
+
+            let balances = self.global_provider.balances().await?;
+
+            if balances.weth >= total_debt_eth + premium_bid {
+                let bid_price = total_debt_eth + premium_bid;
+                match self
+                    .global_provider
+                    .start_auction(&updated_loan, bid_price)
+                    .await
+                {
+                    Ok(()) => info!("started auction successfully"),
+                    Err(e) => {
+                        error!("failed to start auction");
+                        error!("{e}");
+                    }
+                }
+            } else if balances.eth + balances.weth >= total_debt_eth + premium_bid {
+                // can wrap some eth to complete txn
+            } else {
+                warn!("not enough funds to trigger an auction")
+            }
         }
 
         for loan_id in pending_loan_ids_to_remove {

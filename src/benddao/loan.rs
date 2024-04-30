@@ -80,7 +80,7 @@ impl Display for ReserveAsset {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub enum NftAsset {
     Bayc,
     CryptoPunks,

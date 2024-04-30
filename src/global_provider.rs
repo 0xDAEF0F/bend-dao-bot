@@ -19,11 +19,6 @@ use log::{debug, info};
 use std::{str::FromStr, sync::Arc};
 use tokio::task::JoinHandle;
 
-pub struct Balances {
-    pub eth: U256,
-    pub weth: U256,
-}
-
 pub struct GlobalProvider {
     pub local_wallet: LocalWallet,
     pub provider: Arc<Provider<Ws>>,
@@ -109,14 +104,6 @@ impl GlobalProvider {
 
     pub async fn get_updated_loan(&self, loan_id: U256) -> Result<Option<Loan>> {
         get_loan_data(loan_id, self.lend_pool.clone(), self.lend_pool_loan.clone()).await
-    }
-
-    pub async fn balances(&self) -> Result<Balances> {
-        let addr = self.local_wallet.address();
-        let eth = self.provider.get_balance(addr, None).await?;
-        let weth = self.weth.balance_of(addr).await?;
-
-        Ok(Balances { eth, weth })
     }
 
     pub async fn wrap_eth(&self, amount: U256) -> Result<()> {

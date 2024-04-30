@@ -33,8 +33,15 @@ async fn main() -> Result<()> {
     let task_one_handle = task_one(provider.clone(), bend_dao.clone());
     let task_two_handle = task_two(provider.clone(), bend_dao.clone());
     let task_three_handle = task_three(bend_dao.clone());
+    let task_four_handle = task_four(bend_dao.clone());
 
-    join_all([task_one_handle, task_two_handle, task_three_handle]).await;
+    join_all([
+        task_one_handle,
+        task_two_handle,
+        task_three_handle,
+        task_four_handle,
+    ])
+    .await;
 
     info!("bot is shutting down");
 
@@ -117,6 +124,19 @@ fn task_three(bend_dao_state: Arc<Mutex<BendDao>>) -> JoinHandle<Result<()>> {
             sleep(Duration::from_secs(24 * 60 * 60)).await;
             info!("refreshing all loans");
             bend_dao_state.lock().await.refresh_all_loans().await?;
+        }
+    })
+}
+
+// check balances in the wallet and update it to state every hour
+fn task_four(bend_dao_state: Arc<Mutex<BendDao>>) -> JoinHandle<Result<()>> {
+    tokio::spawn(async move {
+        loop {
+            {
+                info!("refreshing the balances of the wallet");
+                bend_dao_state.lock().await.update_balances().await?;
+            }
+            sleep(Duration::from_secs(60 * 60)).await;
         }
     })
 }

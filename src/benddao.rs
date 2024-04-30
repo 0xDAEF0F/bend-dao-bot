@@ -1,15 +1,20 @@
+pub mod balances;
 pub mod loan;
 
 use crate::{
+    benddao::balances::Balances,
     benddao::loan::{Loan, NftAsset, ReserveAsset, Status},
+    constants::bend_dao::LEND_POOL,
     global_provider::GlobalProvider,
+    lend_pool,
     prices_client::PricesClient,
     ConfigVars,
 };
 use anyhow::Result;
 use ethers::{
-    providers::{Provider, Ws},
-    types::U256,
+    providers::{Middleware, Provider, Ws},
+    signers::Signer,
+    types::{Address, U256},
 };
 use log::{debug, error, info, warn};
 use std::{
@@ -23,6 +28,7 @@ use tokio::{
 
 pub struct BendDao {
     loans: HashMap<U256, Loan>,
+    balances: Balances,
     monitored_loans: HashSet<U256>,
     global_provider: GlobalProvider,
     prices_client: PricesClient,
@@ -35,11 +41,47 @@ impl BendDao {
             loans: HashMap::new(),
             global_provider: GlobalProvider::try_new(config_vars.clone()).await?,
             prices_client: PricesClient::new(config_vars),
+            balances: Balances::default(),
         })
     }
 
     pub fn get_provider(&self) -> Arc<Provider<Ws>> {
         self.global_provider.provider.clone()
+    }
+
+    pub async fn update_balances(&mut self) -> Result<()> {
+        let local_wallet_address = self.global_provider.local_wallet.address();
+
+        let eth = self
+            .global_provider
+            .provider
+            .get_balance(local_wallet_address, None)
+            .await?;
+
+        let weth = self
+            .global_provider
+            .weth
+            .balance_of(local_wallet_address)
+            .await?;
+
+        let lend_pool_address: Address = LEND_POOL.parse()?;
+        let approval_amount = self
+            .global_provider
+            .weth
+            .allowance(local_wallet_address, lend_pool_address)
+            .await?;
+
+        let balances = Balances {
+            eth,
+            weth,
+            is_lend_pool_approved: approval_amount == U256::MAX,
+        };
+
+        debug!("{:?}", balances);
+
+        self.balances = balances;
+
+        Ok(())
     }
 
     pub async fn update_loan_in_system(&mut self, loan_id: U256) -> Result<()> {
@@ -76,7 +118,7 @@ impl BendDao {
     }
 
     pub async fn handle_new_block(&mut self) -> Result<()> {
-        info!("checking on monitored_loans");
+        info!("refreshing monitored loans");
 
         let mut pending_loan_ids_to_remove = Vec::new();
 
@@ -98,7 +140,7 @@ impl BendDao {
 
             if !updated_loan.is_auctionable() {
                 info!(
-                    "{:?} #{} | health_factor: {:.2} | status: HEALTHY",
+                    "{:?} #{} | health_factor: {:.4} | status: HEALTHY",
                     updated_loan.nft_asset,
                     updated_loan.nft_token_id,
                     updated_loan.health_factor()
@@ -116,26 +158,11 @@ impl BendDao {
                 .get_best_nft_bid(updated_loan.nft_asset)
                 .await?; // WEI
 
-            let total_debt_eth = match updated_loan.reserve_asset {
-                ReserveAsset::Usdt => {
-                    let usdt_eth_price = self.prices_client.get_usdt_eth_price().await?;
-                    let total_debt_eth = updated_loan.total_debt * usdt_eth_price / U256::exp10(6);
-                    if best_bid > total_debt_eth {
-                        warn!("missing opportunity to buy {}", updated_loan.nft_asset);
-                        warn!(
-                            "best bid: {} > total_debt_eth: {}",
-                            best_bid, total_debt_eth
-                        );
-                    }
-                    continue;
-                }
-                ReserveAsset::Weth => updated_loan.total_debt,
-            };
+            let total_debt_eth = updated_loan.get_total_debt_eth(&self.prices_client).await?;
 
-            // 40% / 365 days = 0.11% (so we take into account the interest in the next 24 hours until we liquidate)
-            let premium_bid = total_debt_eth * U256::from(11) / U256::from(10_000);
+            let bidding_amount = calculate_bidding_amount(total_debt_eth);
 
-            if best_bid < total_debt_eth + premium_bid {
+            if best_bid < bidding_amount {
                 let debt_human_readable = total_debt_eth.as_u128() as f64 / 1e18;
                 let best_bid_human_readable = best_bid.as_u128() as f64 / 1e18;
                 info!(
@@ -148,33 +175,45 @@ impl BendDao {
                 continue;
             }
 
-            let potential_profit =
-                (best_bid - total_debt_eth - premium_bid).as_u128() as f64 / 1e18;
+            let potential_profit = (best_bid - bidding_amount).as_u128() as f64 / 1e18;
+
             info!(
                 "{:?} #{} - potential profit: {:.2} ETH",
                 updated_loan.nft_asset, updated_loan.nft_token_id, potential_profit
             );
 
-            let balances = self.global_provider.balances().await?;
+            if updated_loan.reserve_asset == ReserveAsset::Usdt {
+                warn!("USDT currently not supported. Missing opportunity");
+                continue;
+            }
 
-            if balances.weth >= total_debt_eth + premium_bid {
-                // let bid_price = total_debt_eth + premium_bid;
-                // match self
-                //     .global_provider
-                //     .start_auction(&updated_loan, bid_price)
-                //     .await
-                // {
-                //     Ok(()) => info!("started auction successfully"),
-                //     Err(e) => {
-                //         error!("failed to start auction");
-                //         error!("{e}");
-                //     }
-                // }
-                warn!("uninmplemented1")
-            } else if balances.eth + balances.weth >= total_debt_eth + premium_bid {
-                warn!("uninmplemented2")
-            } else {
-                warn!("not enough funds to trigger an auction")
+            let balances = &self.balances;
+
+            if !balances.is_lend_pool_approved {
+                warn!("lend pool not approved to handle WETH. please approve it.");
+                continue;
+            }
+
+            if bidding_amount > balances.weth {
+                warn!("not enough WETH to participate in auction");
+                continue;
+            }
+
+            if !balances.has_enough_gas_to_call_auction() {
+                warn!("not enough ETH to pay for the auction gas costs");
+                continue;
+            }
+
+            match self
+                .global_provider
+                .start_auction(&updated_loan, bidding_amount)
+                .await
+            {
+                Ok(()) => info!("started auction successfully"),
+                Err(e) => {
+                    error!("failed to start auction");
+                    error!("{e}");
+                }
             }
         }
 
@@ -289,4 +328,9 @@ async fn save_repaid_defaulted_loans(loans: &BTreeSet<u64>) -> Result<()> {
     file.write_all(data.as_bytes()).await?;
 
     Ok(())
+}
+
+// 40% / 365 days = 0.11% (so we take into account the interest in the next 24 hours until we liquidate)
+fn calculate_bidding_amount(total_debt: U256) -> U256 {
+    total_debt * U256::from(11) / U256::from(10_000)
 }

@@ -292,27 +292,6 @@ impl BendDao {
 
         Ok(())
     }
-
-    pub async fn refresh_all_loans(&mut self) -> Result<()> {
-        let iter = self.loans.keys().map(|k| k.as_u64());
-        let loans = self.global_provider.get_loans_from_iter(iter).await?;
-
-        for loan in loans {
-            if loan.status == Status::RepaidDefaulted || loan.status == Status::Auction {
-                self.loans.remove(&loan.loan_id);
-                self.monitored_loans.remove(&loan.loan_id);
-            }
-
-            match loan.should_monitor() {
-                true => self.monitored_loans.insert(loan.loan_id),
-                false => self.monitored_loans.remove(&loan.loan_id),
-            };
-
-            self.loans.insert(loan.loan_id, loan);
-        }
-
-        Ok(())
-    }
 }
 
 async fn get_repaid_defaulted_loans() -> Result<BTreeSet<u64>> {

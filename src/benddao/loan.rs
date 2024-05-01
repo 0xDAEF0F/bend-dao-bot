@@ -122,6 +122,15 @@ impl TryFrom<Address> for NftAsset {
     }
 }
 
+impl TryFrom<NftAsset> for Address {
+    type Error = anyhow::Error;
+
+    fn try_from(value: NftAsset) -> Result<Address, Self::Error> {
+        let addr = format!("{:?}", value);
+        Ok(addr.parse()?)
+    }
+}
+
 impl Display for NftAsset {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {

@@ -11,7 +11,7 @@ use crate::{
     prices_client::PricesClient,
     ConfigVars,
 };
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, bail, Result};
 use ethers::{
     providers::{Middleware, Provider, Ws},
     signers::Signer,
@@ -254,14 +254,27 @@ impl BendDao {
         self.our_pending_auctions.values().min().copied()
     }
 
-    pub async fn liquidate(&mut self) -> Result<()> {
+    pub async fn try_liquidate(&mut self) -> Result<()> {
         let (loan_id, _) = self
             .our_pending_auctions
             .iter()
             .min_by(|a, b| a.1.cmp(b.1))
-            .ok_or_else(|| anyhow!("no next auction"))?;
+            .ok_or_else(|| anyhow!("no next auction to liquidate"))?;
 
         let loan = self.loans.get(loan_id).expect("loan should exist");
+
+        let has_auction_ended = self
+            .global_provider
+            .has_auction_ended(loan.nft_asset, loan.nft_token_id)
+            .await?;
+
+        if !has_auction_ended {
+            bail!("auction has not ended yet")
+        }
+
+        if !self.balances.has_enough_gas_to_call_auction() {
+            bail!("not enough WETH balance to liquidate")
+        }
 
         self.global_provider.liquidate_loan(loan).await?;
 

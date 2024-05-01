@@ -1,6 +1,6 @@
 use anyhow::Result;
 use bend_dao_collector::benddao::loan::NftAsset;
-use bend_dao_collector::constants::math::ONE_HOUR;
+use bend_dao_collector::constants::math::{ONE_HOUR, ONE_MINUTE};
 use bend_dao_collector::lend_pool::LendPool;
 use bend_dao_collector::{benddao::BendDao, constants::bend_dao::LEND_POOL};
 use bend_dao_collector::{ConfigVars, LendPoolEvents};
@@ -11,7 +11,7 @@ use ethers::{
     types::Address,
 };
 use futures::future::join_all;
-use log::info;
+use log::{error, info, warn};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
@@ -156,14 +156,21 @@ fn task_four(bend_dao_state: Arc<Mutex<BendDao>>) -> JoinHandle<Result<()>> {
     })
 }
 
-// TODO: handle failures
 // handle liquidations task
 fn task_five(bend_dao_state: Arc<Mutex<BendDao>>) -> JoinHandle<Result<()>> {
     tokio::spawn(async move {
         loop {
             if let Some(instant) = bend_dao_state.lock().await.get_next_liquidation_instant() {
                 sleep_until(instant).await;
-                bend_dao_state.lock().await.liquidate().await?;
+                match bend_dao_state.lock().await.try_liquidate().await {
+                    Ok(()) => {
+                        warn!("loan was liquidated");
+                    }
+                    Err(e) => {
+                        error!("bot line 172: {}", e);
+                        sleep(Duration::from_secs(ONE_MINUTE * 5)).await
+                    }
+                }
             } else {
                 sleep(Duration::from_secs(ONE_HOUR * 6)).await;
             }

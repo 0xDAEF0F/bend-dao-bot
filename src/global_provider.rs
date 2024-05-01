@@ -175,6 +175,27 @@ impl GlobalProvider {
 
         Ok(())
     }
+
+    pub async fn has_auction_ended(&self, nft_asset: NftAsset, token_id: U256) -> Result<bool> {
+        let latest_block = self.provider.get_block_number().await?;
+        let timestamp = self
+            .provider
+            .get_block(latest_block)
+            .await?
+            .expect("block should be there")
+            .timestamp;
+
+        let (_loan_id, _bid_start_timestamp, bid_end_timestamp, _redeem_end_timestamp) = self
+            .lend_pool
+            .get_nft_auction_end_time(nft_asset.try_into()?, token_id)
+            .await?;
+
+        if timestamp >= bid_end_timestamp {
+            Ok(true)
+        } else {
+            Ok(false)
+        }
+    }
 }
 
 pub async fn get_loan_data<U>(

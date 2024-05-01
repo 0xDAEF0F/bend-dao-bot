@@ -1,4 +1,4 @@
-use crate::constants::math::{RAY, SECONDS_PER_YEAR};
+use crate::constants::math::{ONE_YEAR, RAY};
 use ethers::types::U256;
 
 /**
@@ -54,7 +54,7 @@ pub fn calculate_compounded_interest(
         U256::zero()
     };
 
-    let rate_per_second = rate / U256::from(SECONDS_PER_YEAR);
+    let rate_per_second = rate / U256::from(ONE_YEAR);
 
     let base_power_two = ray_mul(rate_per_second, rate_per_second).unwrap();
     let base_power_three = ray_mul(base_power_two, rate_per_second).unwrap();

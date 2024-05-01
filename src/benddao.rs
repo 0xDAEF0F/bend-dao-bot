@@ -2,14 +2,16 @@ pub mod balances;
 pub mod loan;
 
 use crate::{
-    benddao::balances::Balances,
-    benddao::loan::{Loan, ReserveAsset, Status},
-    constants::bend_dao::LEND_POOL,
+    benddao::{
+        balances::Balances,
+        loan::{Loan, ReserveAsset, Status},
+    },
+    constants::{bend_dao::LEND_POOL, math::ONE_DAY},
     global_provider::GlobalProvider,
     prices_client::PricesClient,
     ConfigVars,
 };
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use ethers::{
     providers::{Middleware, Provider, Ws},
     signers::Signer,
@@ -24,13 +26,14 @@ use std::{
 use tokio::{
     fs::File,
     io::{AsyncReadExt, AsyncWriteExt},
+    time::{Duration, Instant},
 };
 
 pub struct BendDao {
     loans: HashMap<U256, Loan>,
     balances: Balances,
     monitored_loans: HashSet<U256>,
-    our_pending_auctions: HashSet<U256>,
+    our_pending_auctions: HashMap<U256, Instant>, // loan_id -> Instant
     global_provider: GlobalProvider,
     prices_client: PricesClient,
 }
@@ -41,7 +44,7 @@ impl BendDao {
             monitored_loans: HashSet::new(),
             loans: HashMap::new(),
             global_provider: GlobalProvider::try_new(config_vars.clone()).await?,
-            our_pending_auctions: HashSet::new(),
+            our_pending_auctions: HashMap::new(),
             prices_client: PricesClient::new(config_vars),
             balances: Balances::default(),
         })
@@ -229,7 +232,9 @@ impl BendDao {
             {
                 Ok(()) => {
                     info!("started auction successfully");
-                    self.our_pending_auctions.insert(updated_loan.loan_id);
+                    let instant = Instant::now() + Duration::from_secs(ONE_DAY + 120);
+                    self.our_pending_auctions
+                        .insert(updated_loan.loan_id, instant);
                 }
                 Err(e) => {
                     error!("failed to start auction");
@@ -241,6 +246,26 @@ impl BendDao {
         for loan_id in pending_loan_ids_to_remove {
             self.monitored_loans.remove(&loan_id);
         }
+
+        Ok(())
+    }
+
+    pub fn get_next_liquidation_instant(&self) -> Option<Instant> {
+        self.our_pending_auctions.values().min().copied()
+    }
+
+    pub async fn liquidate(&mut self) -> Result<()> {
+        let (loan_id, _) = self
+            .our_pending_auctions
+            .iter()
+            .min_by(|a, b| a.1.cmp(b.1))
+            .ok_or_else(|| anyhow!("no next auction"))?;
+
+        let loan = self.loans.get(loan_id).expect("loan should exist");
+
+        self.global_provider.liquidate_loan(loan).await?;
+
+        self.our_pending_auctions.remove(&loan.loan_id);
 
         Ok(())
     }

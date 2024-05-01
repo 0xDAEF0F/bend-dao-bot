@@ -1,5 +1,6 @@
 use anyhow::Result;
 use bend_dao_collector::benddao::loan::NftAsset;
+use bend_dao_collector::constants::math::ONE_HOUR;
 use bend_dao_collector::lend_pool::LendPool;
 use bend_dao_collector::{benddao::BendDao, constants::bend_dao::LEND_POOL};
 use bend_dao_collector::{ConfigVars, LendPoolEvents};
@@ -14,7 +15,7 @@ use log::info;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
-use tokio::time::{sleep, Duration};
+use tokio::time::{sleep, sleep_until, Duration};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -35,12 +36,14 @@ async fn main() -> Result<()> {
     let task_two_handle = task_two(provider.clone(), bend_dao.clone());
     let task_three_handle = task_three(bend_dao.clone());
     let task_four_handle = task_four(bend_dao.clone());
+    let task_five_handle = task_five(bend_dao.clone());
 
     join_all([
         task_one_handle,
         task_two_handle,
         task_three_handle,
         task_four_handle,
+        task_five_handle,
     ])
     .await;
 
@@ -67,24 +70,24 @@ fn task_one(
             let mut bd_lock = bend_dao_state.lock().await;
             match evt {
                 LendPoolEvents::BorrowFilter(evt) => {
-                    if let Ok(_) = NftAsset::try_from(evt.nft_asset) {
+                    if NftAsset::try_from(evt.nft_asset).is_ok() {
                         // a loan has been created or re-borrowed more
                         bd_lock.update_loan_in_system(evt.loan_id).await?;
                     }
                 }
                 LendPoolEvents::RepayFilter(evt) => {
-                    if let Ok(_) = NftAsset::try_from(evt.nft_asset) {
+                    if NftAsset::try_from(evt.nft_asset).is_ok() {
                         // repayment occured. either partial or total
                         bd_lock.update_loan_in_system(evt.loan_id).await?;
                     }
                 }
                 LendPoolEvents::AuctionFilter(evt) => {
-                    if let Ok(_) = NftAsset::try_from(evt.nft_asset) {
+                    if NftAsset::try_from(evt.nft_asset).is_ok() {
                         bd_lock.update_loan_in_system(evt.loan_id).await?;
                     }
                 }
                 LendPoolEvents::RedeemFilter(evt) => {
-                    if let Ok(_) = NftAsset::try_from(evt.nft_asset) {
+                    if NftAsset::try_from(evt.nft_asset).is_ok() {
                         // loan has been partially repaid by owner and
                         // moved from auctions to active again
                         bd_lock.update_loan_in_system(evt.loan_id).await?;
@@ -149,6 +152,21 @@ fn task_four(bend_dao_state: Arc<Mutex<BendDao>>) -> JoinHandle<Result<()>> {
                 bend_dao.update_balances().await?;
             }
             sleep(Duration::from_secs(60 * 60)).await;
+        }
+    })
+}
+
+// TODO: handle failures
+// handle liquidations task
+fn task_five(bend_dao_state: Arc<Mutex<BendDao>>) -> JoinHandle<Result<()>> {
+    tokio::spawn(async move {
+        loop {
+            if let Some(instant) = bend_dao_state.lock().await.get_next_liquidation_instant() {
+                sleep_until(instant).await;
+                bend_dao_state.lock().await.liquidate().await?;
+            } else {
+                sleep(Duration::from_secs(ONE_HOUR * 6)).await;
+            }
         }
     })
 }

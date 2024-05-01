@@ -8,7 +8,7 @@ use core::fmt;
 use ethers::types::{Address, U256};
 use std::fmt::{Debug, Display, Formatter};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Loan {
     pub loan_id: U256,
     pub status: Status,
@@ -46,7 +46,7 @@ impl Loan {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Copy, Clone)]
 pub enum Status {
     Created, // not sure about this state
     Active,
@@ -54,7 +54,7 @@ pub enum Status {
     RepaidDefaulted,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Copy, Clone)]
 pub enum ReserveAsset {
     Weth,
     Usdt,

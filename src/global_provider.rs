@@ -1,5 +1,5 @@
 use crate::{
-    benddao::loan::{Loan, NftAsset, ReserveAsset, Status},
+    benddao::loan::{Auction, Loan, NftAsset, ReserveAsset, Status},
     constants::{
         addresses::WETH,
         bend_dao::{LEND_POOL, LEND_POOL_LOAN, NFT_ORACLE, RESERVE_ORACLE},
@@ -212,7 +212,10 @@ where
         0 => return Ok(None),
         1 => Status::Created,
         2 => Status::Active,
-        3 => Status::Auction,
+        3 => Status::Auction(Auction {
+            highest_bidder: loan_data.bidder_address,
+            bid_start_timestamp: loan_data.bid_start_timestamp,
+        }),
         4 | 5 => Status::RepaidDefaulted,
         _ => panic!("invalid state"),
     };

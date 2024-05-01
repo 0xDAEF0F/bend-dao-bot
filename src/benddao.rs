@@ -6,7 +6,10 @@ use crate::{
         balances::Balances,
         loan::{Loan, ReserveAsset, Status},
     },
-    constants::{bend_dao::LEND_POOL, math::ONE_DAY},
+    constants::{
+        bend_dao::LEND_POOL,
+        math::{ONE_DAY, ONE_MINUTE},
+    },
     global_provider::GlobalProvider,
     prices_client::PricesClient,
     ConfigVars,
@@ -107,10 +110,13 @@ impl BendDao {
                 self.monitored_loans.remove(&loan_id);
                 return Ok(());
             }
-            Status::Auction => {
+            Status::Auction(auction) => {
                 // remove from the system. if the loan is redeemed it will be added back
                 self.loans.remove(&loan_id);
                 self.monitored_loans.remove(&loan_id);
+                if !auction.is_ours(&self.global_provider.local_wallet) {
+                    self.our_pending_auctions.remove(&loan_id);
+                }
                 return Ok(());
             }
             Status::Active => {
@@ -145,7 +151,7 @@ impl BendDao {
                 .await?
                 .expect("loan in monitored_loans pool shouldn't be `None`");
 
-            if updated_loan.status == Status::Auction {
+            if let Status::Auction(_auction) = updated_loan.status {
                 warn!("loan_id: {loan_id} in monitored_loans transitioned to `Status::Auction`");
                 continue;
             }
@@ -220,7 +226,7 @@ impl BendDao {
                 continue;
             }
 
-            if !balances.has_enough_gas_to_call_auction() {
+            if !balances.has_enough_gas_to_auction_or_liquidate() {
                 warn!("not enough ETH to pay for the auction gas costs");
                 continue;
             }
@@ -232,7 +238,8 @@ impl BendDao {
             {
                 Ok(()) => {
                     info!("started auction successfully");
-                    let instant = Instant::now() + Duration::from_secs(ONE_DAY + 120);
+                    let cushion_time = ONE_MINUTE * 5;
+                    let instant = Instant::now() + Duration::from_secs(ONE_DAY + cushion_time);
                     self.our_pending_auctions
                         .insert(updated_loan.loan_id, instant);
                 }
@@ -272,7 +279,7 @@ impl BendDao {
             bail!("auction has not ended yet")
         }
 
-        if !self.balances.has_enough_gas_to_call_auction() {
+        if !self.balances.has_enough_gas_to_auction_or_liquidate() {
             bail!("not enough WETH balance to liquidate")
         }
 
@@ -296,15 +303,7 @@ impl BendDao {
             .await?
             .as_u64();
 
-        let start_loan_id: u64 = dotenv::var("ENVIRONMENT")
-            .map(|env| {
-                if env.to_lowercase() == "production" {
-                    1
-                } else {
-                    end_loan_id - 2
-                }
-            })
-            .unwrap_or(end_loan_id - 2);
+        let start_loan_id: u64 = 1;
 
         let iter = (start_loan_id..end_loan_id).filter(|x| !repaid_defaulted_loans_set.contains(x));
 
@@ -321,6 +320,14 @@ impl BendDao {
             if loan.status == Status::RepaidDefaulted {
                 repaid_defaulted_loans_set.insert(loan.loan_id.as_u64());
                 continue;
+            }
+
+            if let Status::Auction(auction) = loan.status {
+                if auction.is_ours(&self.global_provider.local_wallet) {
+                    let instant = auction.get_bid_end();
+                    self.our_pending_auctions.insert(loan.loan_id, instant);
+                    continue;
+                }
             }
 
             if loan.status == Status::Active {

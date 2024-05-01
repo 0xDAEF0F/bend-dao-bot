@@ -8,8 +8,8 @@ pub struct Balances {
 }
 
 impl Balances {
-    // set it for the time being at 0.1 eth
-    pub fn has_enough_gas_to_call_auction(&self) -> bool {
+    // TODO: improve refinement 0.1 ETH is too much
+    pub fn has_enough_gas_to_auction_or_liquidate(&self) -> bool {
         self.eth >= U256::exp10(17)
     }
 }

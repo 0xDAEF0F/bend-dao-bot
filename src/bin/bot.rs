@@ -135,7 +135,7 @@ fn task_three(bend_dao_state: Arc<Mutex<BendDao>>) -> JoinHandle<Result<()>> {
     tokio::spawn(async move {
         info!("starting the task to refresh loans every 6 hrs");
         loop {
-            sleep(Duration::from_secs(6 * 60 * 60)).await;
+            sleep(Duration::from_secs(ONE_HOUR * 6)).await;
             info!("refreshing all loans");
             bend_dao_state.lock().await.build_all_loans().await?;
         }
@@ -151,7 +151,7 @@ fn task_four(bend_dao_state: Arc<Mutex<BendDao>>) -> JoinHandle<Result<()>> {
                 let mut bend_dao = bend_dao_state.lock().await;
                 bend_dao.update_balances().await?;
             }
-            sleep(Duration::from_secs(60 * 60)).await;
+            sleep(Duration::from_secs(ONE_HOUR)).await;
         }
     })
 }

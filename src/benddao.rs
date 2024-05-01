@@ -30,6 +30,7 @@ pub struct BendDao {
     loans: HashMap<U256, Loan>,
     balances: Balances,
     monitored_loans: HashSet<U256>,
+    our_pending_auctions: HashSet<U256>,
     global_provider: GlobalProvider,
     prices_client: PricesClient,
 }
@@ -40,6 +41,7 @@ impl BendDao {
             monitored_loans: HashSet::new(),
             loans: HashMap::new(),
             global_provider: GlobalProvider::try_new(config_vars.clone()).await?,
+            our_pending_auctions: HashSet::new(),
             prices_client: PricesClient::new(config_vars),
             balances: Balances::default(),
         })
@@ -108,7 +110,14 @@ impl BendDao {
                 self.monitored_loans.remove(&loan_id);
                 return Ok(());
             }
-            _ => {}
+            Status::Active => {
+                // TODO: send a notification to our slack to signal that they redeemed us
+                // if its in our pending auctions we should remove it
+                self.our_pending_auctions.remove(&loan_id);
+            }
+            Status::Created => {
+                info!("Status::Created is not handled");
+            }
         }
 
         match loan.should_monitor() {
@@ -218,7 +227,10 @@ impl BendDao {
                 .start_auction(&updated_loan, bidding_amount)
                 .await
             {
-                Ok(()) => info!("started auction successfully"),
+                Ok(()) => {
+                    info!("started auction successfully");
+                    self.our_pending_auctions.insert(updated_loan.loan_id);
+                }
                 Err(e) => {
                     error!("failed to start auction");
                     error!("{e}");

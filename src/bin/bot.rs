@@ -146,10 +146,10 @@ fn task_three(bend_dao_state: Arc<Mutex<BendDao>>) -> JoinHandle<Result<()>> {
 fn task_four(bend_dao_state: Arc<Mutex<BendDao>>) -> JoinHandle<Result<()>> {
     tokio::spawn(async move {
         loop {
-            {
-                info!("refreshing the balances of the wallet");
-                let mut bend_dao = bend_dao_state.lock().await;
-                bend_dao.update_balances().await?;
+            info!("refreshing the balances of the wallet");
+            let result = bend_dao_state.lock().await.update_balances().await;
+            if result.is_err() {
+                error!("failed to update wallet balances. trying again in 1 hour.");
             }
             sleep(Duration::from_secs(ONE_HOUR)).await;
         }
@@ -160,19 +160,25 @@ fn task_four(bend_dao_state: Arc<Mutex<BendDao>>) -> JoinHandle<Result<()>> {
 fn task_five(bend_dao_state: Arc<Mutex<BendDao>>) -> JoinHandle<Result<()>> {
     tokio::spawn(async move {
         loop {
-            if let Some(instant) = bend_dao_state.lock().await.get_next_liquidation_instant() {
-                sleep_until(instant).await;
-                match bend_dao_state.lock().await.try_liquidate().await {
-                    Ok(()) => {
-                        warn!("loan was liquidated");
-                    }
-                    Err(e) => {
-                        error!("bot line 172: {}", e);
-                        sleep(Duration::from_secs(ONE_MINUTE * 5)).await
+            let maybe_instant = bend_dao_state.lock().await.get_next_liquidation_instant();
+            match maybe_instant {
+                Some(instant) => {
+                    sleep_until(instant).await;
+                    let liq_result = bend_dao_state.lock().await.try_liquidate().await;
+                    match liq_result {
+                        Ok(()) => {
+                            warn!("loan was successfully liquidated");
+                        }
+                        Err(e) => {
+                            error!("bot line 173: {}", e);
+                            sleep(Duration::from_secs(ONE_MINUTE * 5)).await
+                        }
                     }
                 }
-            } else {
-                sleep(Duration::from_secs(ONE_HOUR * 6)).await;
+                None => {
+                    info!("no pending future auctions. sleeping for 6 hours.");
+                    sleep(Duration::from_secs(ONE_HOUR * 6)).await;
+                }
             }
         }
     })

@@ -1,17 +1,18 @@
+pub mod auction;
 pub mod balances;
 pub mod loan;
+pub mod status;
 
+use self::status::Status;
 use crate::{
-    benddao::{
-        balances::Balances,
-        loan::{Loan, Status},
-    },
+    benddao::{balances::Balances, loan::Loan},
     constants::{
         bend_dao::LEND_POOL,
         math::{ONE_DAY, ONE_MINUTE},
     },
     global_provider::GlobalProvider,
     prices_client::PricesClient,
+    utils::{calculate_bidding_amount, get_repaid_defaulted_loans, save_repaid_defaulted_loans},
     ConfigVars,
 };
 use anyhow::{anyhow, bail, Result};
@@ -26,11 +27,7 @@ use std::{
     collections::{BTreeSet, HashMap, HashSet},
     sync::Arc,
 };
-use tokio::{
-    fs::File,
-    io::{AsyncReadExt, AsyncWriteExt},
-    time::{Duration, Instant},
-};
+use tokio::time::{Duration, Instant};
 
 pub struct BendDao {
     loans: HashMap<U256, Loan>,
@@ -250,18 +247,28 @@ impl BendDao {
         Ok(())
     }
 
-    pub fn get_next_liquidation_instant(&self) -> Option<Instant> {
-        self.our_pending_auctions.values().min().copied()
-    }
-
-    pub async fn try_liquidate(&mut self) -> Result<()> {
-        let (loan_id, _) = self
-            .our_pending_auctions
+    pub fn get_next_liquidation(&self) -> Option<(U256, Instant)> {
+        self.our_pending_auctions
             .iter()
             .min_by(|a, b| a.1.cmp(b.1))
-            .ok_or_else(|| anyhow!("no next auction to liquidate"))?;
+            .map(|(&loan_id, &instant)| (loan_id, instant))
+    }
 
-        let loan = self.loans.get(loan_id).expect("loan should exist");
+    // has the auction ended?
+    // do we have enough eth to call liquidate?
+    // did we actually win the auction?
+    // is the bid we pushed enough to pay the total debt?
+    pub async fn try_liquidate(&mut self, loan_id: U256) -> Result<()> {
+        let loan = self
+            .global_provider
+            .get_updated_loan(loan_id)
+            .await?
+            .ok_or_else(|| anyhow!("benddao.rs - 265"))?;
+
+        if let Status::Auction(_auction) = loan.status {
+        } else {
+            bail!("{} is not in auction", loan)
+        }
 
         let has_auction_ended = self
             .global_provider
@@ -276,7 +283,7 @@ impl BendDao {
             bail!("not enough WETH balance to liquidate")
         }
 
-        self.global_provider.liquidate_loan(loan).await?;
+        self.global_provider.liquidate_loan(&loan).await?;
 
         self.our_pending_auctions.remove(&loan.loan_id);
 
@@ -342,35 +349,4 @@ impl BendDao {
 
         Ok(())
     }
-}
-
-async fn get_repaid_defaulted_loans() -> Result<BTreeSet<u64>> {
-    // if the file does not exist it will return Err
-    let mut file = File::open("data/repaid-defaulted.json").await?;
-    let mut json_string = String::new();
-
-    file.read_to_string(&mut json_string).await?;
-
-    let data: Vec<u64> = serde_json::from_str(&json_string)?;
-
-    Ok(BTreeSet::from_iter(data))
-}
-
-async fn save_repaid_defaulted_loans(loans: &BTreeSet<u64>) -> Result<()> {
-    // will create the file or delete it's contents if it exists already
-    let mut file = File::create("data/repaid-defaulted.json").await?;
-
-    // if BTreeSet is empty it will just write `[]` to the json file
-    let data = serde_json::to_string(loans)?;
-
-    file.write_all(data.as_bytes()).await?;
-
-    Ok(())
-}
-
-// TODO: refine the calculation
-// 40% / 365 days = 0.11% (so we take into account the interest in the next 24 hours until we liquidate)
-// total_debt + 0.11% * total_debt
-pub fn calculate_bidding_amount(total_debt: U256) -> U256 {
-    total_debt + (total_debt * U256::from(11) / U256::from(10_000))
 }

@@ -1,17 +1,13 @@
+use super::status::Status;
 use crate::constants::addresses::{
     BAYC, CLONEX, CRYPTOPUNKS, MAYC, PUDGY_PENGUINS, STBAYC, USDT, WETH,
 };
 use crate::constants::bend_dao::HEALTH_FACTOR_THRESHOLD_TO_MONITOR;
-use crate::constants::math::{ONE_DAY, ONE_MINUTE};
 use crate::prices_client::PricesClient;
 use anyhow::{bail, Result};
-use chrono::Utc;
 use core::fmt;
-use ethers::signers::{LocalWallet, Signer};
 use ethers::types::{Address, U256};
 use std::fmt::{Debug, Display, Formatter};
-use std::time::Duration;
-use tokio::time::Instant;
 
 #[derive(Debug, Clone)]
 pub struct Loan {
@@ -64,46 +60,6 @@ impl Loan {
     // for displaying purposes
     pub fn health_factor(&self) -> f64 {
         self.health_factor.as_u64() as f64 / 1e18
-    }
-}
-
-#[derive(Debug, PartialEq, Copy, Clone)]
-pub enum Status {
-    Created, // not sure about this state
-    Active,
-    Auction(Auction),
-    RepaidDefaulted,
-}
-
-impl Display for Status {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match &self {
-            Self::Active => write!(f, "Active"),
-            Self::Auction(_) => write!(f, "Auction"),
-            Self::Created => write!(f, "Created"),
-            Self::RepaidDefaulted => write!(f, "RepaidDefaulted"),
-        }
-    }
-}
-
-#[derive(Debug, PartialEq, Copy, Clone)]
-pub struct Auction {
-    pub highest_bidder: Address,
-    pub bid_start_timestamp: U256, // unix timestamp in seconds
-}
-
-impl Auction {
-    pub fn get_bid_end(&self) -> Instant {
-        let time_elapsed_in_aution =
-            Utc::now().timestamp() as u64 - self.bid_start_timestamp.as_u64();
-
-        let cushion_time = ONE_MINUTE * 5;
-
-        Instant::now() + Duration::from_secs(ONE_DAY + cushion_time - time_elapsed_in_aution)
-    }
-
-    pub fn is_ours(&self, local_wallet: &LocalWallet) -> bool {
-        self.highest_bidder == local_wallet.address()
     }
 }
 

@@ -6,7 +6,7 @@ use bend_dao_collector::{
         addresses::{CLONEX, WETH},
         bend_dao::{LEND_POOL, LEND_POOL_LOAN},
     },
-    global_provider::get_loan_data,
+    utils::get_loan_data,
     Erc721, LendPool, LendPoolLoan, Weth,
 };
 use ethers::{

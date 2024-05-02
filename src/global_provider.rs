@@ -1,21 +1,22 @@
 use crate::{
-    benddao::loan::{Auction, Loan, NftAsset, ReserveAsset, Status},
+    benddao::loan::{Loan, NftAsset},
     constants::{
         addresses::{USDT, WETH},
         bend_dao::{LEND_POOL, LEND_POOL_LOAN, NFT_ORACLE, RESERVE_ORACLE},
     },
-    ConfigVars, Erc20, LendPool, LendPoolLoan, LoanData, NFTOracle, ReserveOracle, Weth,
+    utils::get_loan_data,
+    ConfigVars, Erc20, LendPool, LendPoolLoan, NFTOracle, ReserveOracle, Weth,
 };
 use anyhow::{bail, Result};
 use ethers::{
     core::k256::ecdsa::SigningKey,
     middleware::SignerMiddleware,
-    providers::{JsonRpcClient, Middleware, Provider, Ws},
+    providers::{Middleware, Provider, Ws},
     signers::{coins_bip39::English, LocalWallet, MnemonicBuilder, Signer, Wallet},
     types::{Address, U256},
 };
 use futures::future::join_all;
-use log::{debug, info};
+use log::info;
 use std::sync::Arc;
 use tokio::task::JoinHandle;
 
@@ -201,59 +202,4 @@ impl GlobalProvider {
             Ok(false)
         }
     }
-}
-
-pub async fn get_loan_data<U>(
-    loan_id: U256,
-    lend_pool: LendPool<Provider<U>>,
-    lend_pool_loan: LendPoolLoan<Provider<U>>,
-) -> Result<Option<Loan>>
-where
-    U: JsonRpcClient + 'static,
-{
-    let loan_data: LoanData = lend_pool_loan.get_loan(loan_id).await?;
-
-    let status = match loan_data.state {
-        0 => return Ok(None),
-        1 => Status::Created,
-        2 => Status::Active,
-        3 => Status::Auction(Auction {
-            highest_bidder: loan_data.bidder_address,
-            bid_start_timestamp: loan_data.bid_start_timestamp,
-        }),
-        4 | 5 => Status::RepaidDefaulted,
-        _ => panic!("invalid state"),
-    };
-
-    let reserve_asset = match ReserveAsset::try_from(loan_data.reserve_asset) {
-        Ok(reserve_asset) => reserve_asset,
-        Err(e) => {
-            debug!("{e}");
-            return Ok(None);
-        }
-    };
-
-    let nft_asset = match NftAsset::try_from(loan_data.nft_asset) {
-        Ok(nft_asset) => nft_asset,
-        Err(e) => {
-            debug!("{e}");
-            return Ok(None);
-        }
-    };
-
-    let (_, _, _, total_debt, _, health_factor) = lend_pool
-        .get_nft_debt_data(loan_data.nft_asset, loan_data.nft_token_id)
-        .await?;
-
-    let loan = Loan {
-        health_factor,
-        status,
-        total_debt,
-        reserve_asset,
-        nft_asset,
-        loan_id: loan_data.loan_id,
-        nft_token_id: loan_data.nft_token_id,
-    };
-
-    Ok(Some(loan))
 }

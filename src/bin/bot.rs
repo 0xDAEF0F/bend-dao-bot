@@ -160,11 +160,11 @@ fn task_four(bend_dao_state: Arc<Mutex<BendDao>>) -> JoinHandle<Result<()>> {
 fn task_five(bend_dao_state: Arc<Mutex<BendDao>>) -> JoinHandle<Result<()>> {
     tokio::spawn(async move {
         loop {
-            let maybe_instant = bend_dao_state.lock().await.get_next_liquidation_instant();
+            let maybe_instant = bend_dao_state.lock().await.get_next_liquidation();
             match maybe_instant {
-                Some(instant) => {
+                Some((loan_id, instant)) => {
                     sleep_until(instant).await;
-                    let liq_result = bend_dao_state.lock().await.try_liquidate().await;
+                    let liq_result = bend_dao_state.lock().await.try_liquidate(loan_id).await;
                     match liq_result {
                         Ok(()) => {
                             warn!("loan was successfully liquidated");

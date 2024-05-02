@@ -7,12 +7,13 @@ use crate::{
         loan::{Loan, ReserveAsset, Status},
     },
     constants::{
+        addresses::USDT,
         bend_dao::LEND_POOL,
         math::{ONE_DAY, ONE_MINUTE},
     },
     global_provider::GlobalProvider,
     prices_client::PricesClient,
-    ConfigVars,
+    ConfigVars, Erc20,
 };
 use anyhow::{anyhow, bail, Result};
 use ethers::{
@@ -79,9 +80,14 @@ impl BendDao {
             .allowance(local_wallet_address, lend_pool_address)
             .await?;
 
+        let usdt: Address = USDT.parse()?;
+        let usdt = Erc20::new(usdt, self.get_provider());
+        let usdt = usdt.balance_of(local_wallet_address).await?;
+
         let balances = Balances {
             eth,
             weth,
+            usdt,
             is_lend_pool_approved: approval_amount == U256::MAX,
         };
 
@@ -162,13 +168,16 @@ impl BendDao {
 
             if !updated_loan.is_auctionable() {
                 info!(
-                    "{:?} #{} | health_factor: {:.4} | status: HEALTHY",
+                    "{:?} #{} {:?} | health_factor: {:.4} | status: HEALTHY",
                     updated_loan.nft_asset,
                     updated_loan.nft_token_id,
+                    updated_loan.reserve_asset,
                     updated_loan.health_factor()
                 );
                 continue;
             }
+
+            // IS PROFITABLE SECTION~
 
             info!(
                 "{:?} #{} | status: AUCTIONABLE",
@@ -196,6 +205,8 @@ impl BendDao {
                 );
                 continue;
             }
+
+            //
 
             let potential_profit = format_ether(best_bid - bidding_amount);
             let potential_profit = potential_profit
@@ -255,6 +266,10 @@ impl BendDao {
         }
 
         Ok(())
+    }
+
+    pub async fn start_auction(&mut self, _loan: &Loan) -> Option<()> {
+        todo!()
     }
 
     pub fn get_next_liquidation_instant(&self) -> Option<Instant> {

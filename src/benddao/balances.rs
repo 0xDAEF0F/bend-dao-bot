@@ -4,6 +4,7 @@ use ethers::types::U256;
 pub struct Balances {
     pub eth: U256,
     pub weth: U256,
+    pub usdt: U256,
     pub is_lend_pool_approved: bool, // WETH approval on max
 }
 
@@ -19,6 +20,7 @@ impl Default for Balances {
         Balances {
             eth: U256::zero(),
             weth: U256::zero(),
+            usdt: U256::zero(),
             is_lend_pool_approved: false,
         }
     }

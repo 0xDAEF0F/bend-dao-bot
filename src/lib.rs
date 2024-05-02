@@ -16,6 +16,7 @@ abigen!(NFTOracle, "abi/NFTOracle.json");
 abigen!(ReserveOracle, "abi/ReserveOracle.json");
 abigen!(Weth, "abi/Weth.json");
 abigen!(Erc721, "abi/ERC721.json");
+abigen!(Erc20, "abi/ERC20.json");
 
 #[derive(Clone)]
 pub struct ConfigVars {

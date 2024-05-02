@@ -21,7 +21,7 @@ async fn test_subscribe_parse_past_auction_event() -> Result<()> {
     let provider = Provider::<Ws>::connect(wss_url).await?;
     let provider = Arc::new(provider);
 
-    let address: Address = LEND_POOL.parse()?;
+    let address: Address = LEND_POOL.into();
 
     let contract = LendPool::new(address, provider);
 

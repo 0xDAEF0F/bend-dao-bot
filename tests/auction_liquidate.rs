@@ -39,7 +39,7 @@ async fn test_auction_and_liquidate() -> Result<()> {
     let weth = Weth::new(WETH.parse::<Address>()?, client.clone());
 
     weth.deposit().value(U256::exp10(18)).send().await?.await?;
-    weth.approve(LEND_POOL.parse::<Address>()?, U256::MAX)
+    weth.approve(LEND_POOL.into(), U256::MAX)
         .send()
         .await?
         .await?;
@@ -47,7 +47,7 @@ async fn test_auction_and_liquidate() -> Result<()> {
     let balance_t0 = weth.balance_of(wallet_address).await?;
     assert_eq!(balance_t0, U256::exp10(18));
 
-    let lend_pool = LEND_POOL.parse::<Address>()?;
+    let lend_pool: Address = LEND_POOL.into();
     let lend_pool = LendPool::new(lend_pool, provider.clone());
 
     let lend_pool_loan = LEND_POOL_LOAN.parse::<Address>()?;
@@ -57,7 +57,7 @@ async fn test_auction_and_liquidate() -> Result<()> {
         .await?
         .expect("loan should be there");
 
-    let lend_pool = LendPool::new(LEND_POOL.parse::<Address>()?, client.clone());
+    let lend_pool = LendPool::new(Address::from(LEND_POOL), client.clone());
 
     let nft_asset = format!("{}", loan.nft_asset).parse::<Address>()?;
     let _receipt = lend_pool

@@ -5,10 +5,10 @@ use crate::{
     },
     constants::{
         addresses::{USDT, WETH},
-        bend_dao::{LEND_POOL, LEND_POOL_LOAN, NFT_ORACLE, RESERVE_ORACLE},
+        bend_dao::{LEND_POOL, LEND_POOL_LOAN},
     },
     utils::get_loan_data,
-    ConfigVars, Erc20, LendPool, LendPoolLoan, NFTOracle, ReserveOracle, Weth,
+    ConfigVars, Erc20, LendPool, LendPoolLoan, Weth,
 };
 use anyhow::{bail, Result};
 use ethers::{
@@ -29,8 +29,6 @@ pub struct GlobalProvider {
     pub signer_provider: Arc<SignerMiddleware<Arc<Provider<Ws>>, Wallet<SigningKey>>>,
     pub lend_pool: LendPool<Provider<Ws>>,
     pub lend_pool_loan: LendPoolLoan<Provider<Ws>>,
-    pub nft_oracle: NFTOracle<Provider<Ws>>,
-    pub reserve_oracle: ReserveOracle<Provider<Ws>>,
     pub lend_pool_with_signer: LendPool<SignerMiddleware<Arc<Provider<Ws>>, Wallet<SigningKey>>>,
     pub weth: Weth<SignerMiddleware<Arc<Provider<Ws>>, Wallet<SigningKey>>>,
     pub usdt: Erc20<SignerMiddleware<Arc<Provider<Ws>>, Wallet<SigningKey>>>,
@@ -54,18 +52,12 @@ impl GlobalProvider {
         let signer_provider = SignerMiddleware::new(provider.clone(), local_wallet.clone());
         let signer_provider = Arc::new(signer_provider);
 
-        let address = LEND_POOL.parse::<Address>()?;
-        let lend_pool = LendPool::new(address, provider.clone());
-        let lend_pool_with_signer = LendPool::new(address, signer_provider.clone());
+        let lend_pool = LendPool::new(Address::from(LEND_POOL), provider.clone());
+        let lend_pool_with_signer =
+            LendPool::new(Address::from(LEND_POOL), signer_provider.clone());
 
         let address = LEND_POOL_LOAN.parse::<Address>()?;
         let lend_pool_loan = LendPoolLoan::new(address, provider.clone());
-
-        let address = NFT_ORACLE.parse::<Address>()?;
-        let nft_oracle = NFTOracle::new(address, provider.clone());
-
-        let address = RESERVE_ORACLE.parse::<Address>()?;
-        let reserve_oracle = ReserveOracle::new(address, provider.clone());
 
         let address = WETH.parse::<Address>()?;
         let weth = Weth::new(address, signer_provider.clone());
@@ -79,8 +71,6 @@ impl GlobalProvider {
             signer_provider,
             lend_pool,
             lend_pool_loan,
-            nft_oracle,
-            reserve_oracle,
             lend_pool_with_signer,
             weth,
             usdt,
@@ -120,7 +110,7 @@ impl GlobalProvider {
 
     pub async fn get_balances(&self) -> Result<Balances> {
         let local_wallet_address = self.local_wallet.address();
-        let lend_pool_address: Address = LEND_POOL.parse()?;
+        let lend_pool_address = Address::from(LEND_POOL);
 
         let (eth, weth, usdt, usdt_approval_amount, weth_approval_amount) = try_join!(
             self.get_eth_balance(&local_wallet_address),

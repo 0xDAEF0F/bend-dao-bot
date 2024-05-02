@@ -58,7 +58,7 @@ fn task_one(
     tokio::spawn(async move {
         info!("starting event listener task for lend pool events");
 
-        let lend_pool: Address = LEND_POOL.parse()?;
+        let lend_pool: Address = LEND_POOL.into();
         let lend_pool = LendPool::new(lend_pool, provider);
 
         let events = lend_pool.events();

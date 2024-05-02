@@ -10,6 +10,7 @@ use tokio::time::{Duration, Instant};
 pub struct Auction {
     pub highest_bidder: Address,
     pub bid_start_timestamp: U256, // unix timestamp in seconds
+    pub best_bid: U256,
 }
 
 impl Auction {

@@ -3,13 +3,9 @@ pub mod balances;
 pub mod loan;
 pub mod status;
 
-use self::status::Status;
+use self::{auction::Auction, status::Status};
 use crate::{
-    benddao::{balances::Balances, loan::Loan},
-    constants::{
-        bend_dao::LEND_POOL,
-        math::{ONE_DAY, ONE_MINUTE},
-    },
+    constants::math::{ONE_DAY, ONE_MINUTE},
     global_provider::GlobalProvider,
     prices_client::PricesClient,
     utils::{calculate_bidding_amount, get_repaid_defaulted_loans, save_repaid_defaulted_loans},
@@ -17,12 +13,11 @@ use crate::{
 };
 use anyhow::{anyhow, bail, Result};
 use ethers::{
-    providers::{Middleware, Provider, Ws},
-    signers::Signer,
-    types::{Address, U256},
+    providers::{Provider, Ws},
+    types::U256,
     utils::format_ether,
 };
-use log::{debug, error, info, warn};
+use log::{error, info, warn};
 use std::{
     collections::{BTreeSet, HashMap, HashSet},
     sync::Arc,
@@ -30,10 +25,8 @@ use std::{
 use tokio::time::{Duration, Instant};
 
 pub struct BendDao {
-    loans: HashMap<U256, Loan>,
-    balances: Balances,
     monitored_loans: HashSet<U256>,
-    our_pending_auctions: HashMap<U256, Instant>, // loan_id -> Instant
+    pub our_pending_auctions: HashMap<U256, Instant>, // loan_id -> Instant
     global_provider: GlobalProvider,
     prices_client: PricesClient,
 }
@@ -42,11 +35,9 @@ impl BendDao {
     pub async fn try_new(config_vars: ConfigVars) -> Result<BendDao> {
         Ok(BendDao {
             monitored_loans: HashSet::new(),
-            loans: HashMap::new(),
             global_provider: GlobalProvider::try_new(config_vars.clone()).await?,
             our_pending_auctions: HashMap::new(),
             prices_client: PricesClient::new(config_vars),
-            balances: Balances::default(),
         })
     }
 
@@ -54,56 +45,7 @@ impl BendDao {
         self.global_provider.provider.clone()
     }
 
-    pub async fn update_balances(&mut self) -> Result<()> {
-        let local_wallet_address = self.global_provider.local_wallet.address();
-
-        let eth = self
-            .global_provider
-            .provider
-            .get_balance(local_wallet_address, None)
-            .await?;
-
-        let weth = self
-            .global_provider
-            .weth
-            .balance_of(local_wallet_address)
-            .await?;
-
-        let usdt = self
-            .global_provider
-            .usdt
-            .balance_of(local_wallet_address)
-            .await?;
-
-        let lend_pool_address: Address = LEND_POOL.parse()?;
-
-        let weth_approval_amount = self
-            .global_provider
-            .weth
-            .allowance(local_wallet_address, lend_pool_address)
-            .await?;
-
-        let usdt_approval_amount = self
-            .global_provider
-            .usdt
-            .allowance(local_wallet_address, lend_pool_address)
-            .await?;
-
-        let balances = Balances {
-            eth,
-            weth,
-            usdt,
-            is_usdt_lend_pool_approved: usdt_approval_amount == U256::MAX,
-            is_weth_lend_pool_approved: weth_approval_amount == U256::MAX,
-        };
-
-        debug!("{:?}", balances);
-
-        self.balances = balances;
-
-        Ok(())
-    }
-
+    // assumes that whenever we triggered the auction we already put that in `our_pending_auctions`
     pub async fn update_loan_in_system(&mut self, loan_id: U256) -> Result<()> {
         let loan = match self.global_provider.get_updated_loan(loan_id).await? {
             None => return Ok(()),
@@ -118,13 +60,11 @@ impl BendDao {
             Status::RepaidDefaulted => {
                 // would be nice to update the data store, too but it's not that important.
                 // we can do that in the next synchronization of `build_all_loans`
-                self.loans.remove(&loan_id);
                 self.monitored_loans.remove(&loan_id);
                 return Ok(());
             }
             Status::Auction(auction) => {
                 // remove from the system. if the loan is redeemed it will be added back
-                self.loans.remove(&loan_id);
                 self.monitored_loans.remove(&loan_id);
                 if !auction.is_ours(&self.global_provider.local_wallet) {
                     self.our_pending_auctions.remove(&loan_id);
@@ -146,8 +86,6 @@ impl BendDao {
             false => self.monitored_loans.remove(&loan_id),
         };
 
-        self.loans.insert(loan_id, loan);
-
         Ok(())
     }
 
@@ -166,24 +104,21 @@ impl BendDao {
             info!("{}", updated_loan);
 
             if let Status::Auction(_auction) = updated_loan.status {
-                warn!(
-                    "{:>5}",
-                    "transitioned to `Status::Auction` and was not handled by event listener"
-                );
+                warn!(">> transitioned to `Status::Auction` and was not handled by event listener");
                 continue;
             }
 
             if !updated_loan.should_monitor() {
-                info!("{:>5}", "removing from the monitored loans");
+                info!(">> removing from the monitored loans");
                 pending_loan_ids_to_remove.push(updated_loan.loan_id);
             }
 
             if !updated_loan.is_auctionable() {
-                info!("{:>5}", "loan not auctionable. skipping");
+                info!(">> loan not auctionable. skipping");
                 continue;
             }
 
-            info!("{:>5}", "loan auctionable");
+            info!(">> loan auctionable");
 
             // IS PROFITABLE
             let best_bid = self
@@ -199,10 +134,10 @@ impl BendDao {
                 let debt_human_readable = total_debt_eth.as_u128() as f64 / 1e18;
                 let best_bid_human_readable = best_bid.as_u128() as f64 / 1e18;
                 let string = format!(
-                    "unprofitable | total debt: {:.2} > best bid: {:.2}",
+                    ">> unprofitable | total debt: {:.2} > best bid: {:.2}",
                     debt_human_readable, best_bid_human_readable
                 );
-                info!("{:>5}", string);
+                info!("{string}");
                 continue;
             }
 
@@ -211,13 +146,15 @@ impl BendDao {
                 .parse::<f64>()
                 .expect("unable to convert ETH to f64");
             info!(
-                "{:>5}",
-                format!("potential profit: {:.4} ETH", potential_profit)
+                "{}",
+                format!(">> potential profit: {:.4} ETH", potential_profit)
             );
             // IS PROFITABLE [END]
 
+            let balances = self.global_provider.get_balances().await?;
+
             // already handles logging
-            if !self.balances.can_jump_to_auction(&updated_loan) {
+            if !balances.can_initiate_auction(&updated_loan) {
                 continue;
             }
 
@@ -227,14 +164,14 @@ impl BendDao {
                 .await
             {
                 Ok(()) => {
-                    info!("started auction successfully");
+                    info!(">> started auction successfully");
                     let cushion_time = ONE_MINUTE * 5;
                     let instant = Instant::now() + Duration::from_secs(ONE_DAY + cushion_time);
                     self.our_pending_auctions
                         .insert(updated_loan.loan_id, instant);
                 }
                 Err(e) => {
-                    error!("failed to start auction");
+                    error!(">> failed to start auction");
                     error!("{e}");
                 }
             }
@@ -254,10 +191,10 @@ impl BendDao {
             .map(|(&loan_id, &instant)| (loan_id, instant))
     }
 
-    // has the auction ended?
-    // do we have enough eth to call liquidate?
-    // did we actually win the auction?
-    // is the bid we pushed enough to pay the total debt?
+    /// 1] has the auction ended?
+    /// 2] do we have enough eth to call liquidate?
+    /// 3] did we actually win the auction?
+    /// 4] is the bid we pushed enough to pay the total debt?
     pub async fn try_liquidate(&mut self, loan_id: U256) -> Result<()> {
         let loan = self
             .global_provider
@@ -265,9 +202,15 @@ impl BendDao {
             .await?
             .ok_or_else(|| anyhow!("benddao.rs - 265"))?;
 
-        if let Status::Auction(_auction) = loan.status {
+        let auction: Auction;
+        if let Status::Auction(auction_) = loan.status {
+            auction = auction_;
         } else {
             bail!("{} is not in auction", loan)
+        }
+
+        if !auction.is_ours(&self.global_provider.local_wallet) {
+            bail!("auction is not ours")
         }
 
         let has_auction_ended = self
@@ -279,8 +222,14 @@ impl BendDao {
             bail!("auction has not ended yet")
         }
 
-        if !self.balances.has_enough_gas_to_auction_or_liquidate() {
+        let balances = self.global_provider.get_balances().await?;
+
+        if !balances.has_enough_gas_to_auction_or_liquidate() {
             bail!("not enough WETH balance to liquidate")
+        }
+
+        if auction.best_bid < loan.total_debt {
+            bail!("can't liquidate because best_bid < total_debt")
         }
 
         self.global_provider.liquidate_loan(&loan).await?;
@@ -303,9 +252,7 @@ impl BendDao {
             .await?
             .as_u64();
 
-        let start_loan_id: u64 = 1;
-
-        let iter = (start_loan_id..end_loan_id).filter(|x| !repaid_defaulted_loans_set.contains(x));
+        let iter = (1..end_loan_id).filter(|x| !repaid_defaulted_loans_set.contains(x));
 
         info!("querying information for {} loans", iter.clone().count());
 
@@ -334,18 +281,15 @@ impl BendDao {
                 if loan.should_monitor() {
                     self.monitored_loans.insert(loan.loan_id);
                 }
-                self.loans.insert(loan.loan_id, loan);
             }
         }
 
         save_repaid_defaulted_loans(&repaid_defaulted_loans_set).await?;
 
-        info!("a total of {} loans have been indexed", self.loans.len());
         info!(
             "a total of {} loans are set for monitoring",
             self.monitored_loans.len()
         );
-        debug!("{:?}", &self.loans);
 
         Ok(())
     }

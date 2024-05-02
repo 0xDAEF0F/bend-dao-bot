@@ -19,7 +19,7 @@ impl Balances {
     /// 1] is contract max approved?
     /// 2] do we have enough ETH to cover gas costs?
     /// 3] do we have enough USDT/WETH to cover `total_debt + cushion`?
-    pub fn can_jump_to_auction(&self, loan: &Loan) -> bool {
+    pub fn can_initiate_auction(&self, loan: &Loan) -> bool {
         // handles logging
         if !self.is_usdt_weth_approved(loan) {
             return false;
@@ -83,18 +83,6 @@ impl Balances {
                     false
                 }
             }
-        }
-    }
-}
-
-impl Default for Balances {
-    fn default() -> Balances {
-        Balances {
-            eth: U256::zero(),
-            weth: U256::zero(),
-            usdt: U256::zero(),
-            is_usdt_lend_pool_approved: false,
-            is_weth_lend_pool_approved: false,
         }
     }
 }

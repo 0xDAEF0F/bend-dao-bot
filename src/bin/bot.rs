@@ -1,6 +1,6 @@
 use anyhow::Result;
 use bend_dao_collector::benddao::loan::NftAsset;
-use bend_dao_collector::constants::math::{ONE_HOUR, ONE_MINUTE};
+use bend_dao_collector::constants::math::ONE_HOUR;
 use bend_dao_collector::lend_pool::LendPool;
 use bend_dao_collector::{benddao::BendDao, constants::bend_dao::LEND_POOL};
 use bend_dao_collector::{ConfigVars, LendPoolEvents};
@@ -36,14 +36,12 @@ async fn main() -> Result<()> {
     let task_two_handle = task_two(provider.clone(), bend_dao.clone());
     let task_three_handle = task_three(bend_dao.clone());
     let task_four_handle = task_four(bend_dao.clone());
-    let task_five_handle = task_five(bend_dao.clone());
 
     join_all([
         task_one_handle,
         task_two_handle,
         task_three_handle,
         task_four_handle,
-        task_five_handle,
     ])
     .await;
 
@@ -142,22 +140,8 @@ fn task_three(bend_dao_state: Arc<Mutex<BendDao>>) -> JoinHandle<Result<()>> {
     })
 }
 
-// check balances in the wallet and update it to state every hour
-fn task_four(bend_dao_state: Arc<Mutex<BendDao>>) -> JoinHandle<Result<()>> {
-    tokio::spawn(async move {
-        loop {
-            info!("refreshing the balances of the wallet");
-            let result = bend_dao_state.lock().await.update_balances().await;
-            if result.is_err() {
-                error!("failed to update wallet balances. trying again in 1 hour.");
-            }
-            sleep(Duration::from_secs(ONE_HOUR)).await;
-        }
-    })
-}
-
 // handle liquidations task
-fn task_five(bend_dao_state: Arc<Mutex<BendDao>>) -> JoinHandle<Result<()>> {
+fn task_four(bend_dao_state: Arc<Mutex<BendDao>>) -> JoinHandle<Result<()>> {
     tokio::spawn(async move {
         loop {
             let maybe_instant = bend_dao_state.lock().await.get_next_liquidation();
@@ -170,8 +154,14 @@ fn task_five(bend_dao_state: Arc<Mutex<BendDao>>) -> JoinHandle<Result<()>> {
                             warn!("loan was successfully liquidated");
                         }
                         Err(e) => {
-                            error!("bot line 173: {}", e);
-                            sleep(Duration::from_secs(ONE_MINUTE * 5)).await
+                            error!("bot.rs 173: {}", e);
+                            error!("could not liquidate loan");
+                            // do not try to liquidate again
+                            bend_dao_state
+                                .lock()
+                                .await
+                                .our_pending_auctions
+                                .remove(&loan_id);
                         }
                     }
                 }

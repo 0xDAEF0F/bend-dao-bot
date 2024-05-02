@@ -1,5 +1,8 @@
 use crate::{
-    benddao::loan::{Loan, NftAsset},
+    benddao::{
+        balances::Balances,
+        loan::{Loan, NftAsset},
+    },
     constants::{
         addresses::{USDT, WETH},
         bend_dao::{LEND_POOL, LEND_POOL_LOAN, NFT_ORACLE, RESERVE_ORACLE},
@@ -16,9 +19,9 @@ use ethers::{
     types::{Address, U256},
 };
 use futures::future::join_all;
-use log::info;
+use log::{debug, info};
 use std::sync::Arc;
-use tokio::task::JoinHandle;
+use tokio::{task::JoinHandle, try_join};
 
 pub struct GlobalProvider {
     pub local_wallet: LocalWallet,
@@ -115,6 +118,31 @@ impl GlobalProvider {
         get_loan_data(loan_id, self.lend_pool.clone(), self.lend_pool_loan.clone()).await
     }
 
+    pub async fn get_balances(&self) -> Result<Balances> {
+        let local_wallet_address = self.local_wallet.address();
+        let lend_pool_address: Address = LEND_POOL.parse()?;
+
+        let (eth, weth, usdt, usdt_approval_amount, weth_approval_amount) = try_join!(
+            self.get_eth_balance(&local_wallet_address),
+            self.get_weth_balance(&local_wallet_address),
+            self.get_usdt_balance(&local_wallet_address),
+            self.get_weth_lend_pool_approval(&local_wallet_address, &lend_pool_address),
+            self.get_usdt_lend_pool_approval(&local_wallet_address, &lend_pool_address)
+        )?;
+
+        let balances = Balances {
+            eth,
+            weth,
+            usdt,
+            is_usdt_lend_pool_approved: usdt_approval_amount == U256::MAX,
+            is_weth_lend_pool_approved: weth_approval_amount == U256::MAX,
+        };
+
+        debug!("{:?}", balances);
+
+        Ok(balances)
+    }
+
     pub async fn wrap_eth(&self, amount: U256) -> Result<()> {
         let address = self.local_wallet.address();
         let wallet_balance: U256 = self.weth.balance_of(address).await?;
@@ -201,5 +229,33 @@ impl GlobalProvider {
         } else {
             Ok(false)
         }
+    }
+
+    async fn get_eth_balance(&self, addr: &Address) -> Result<U256> {
+        Ok(self.provider.get_balance(*addr, None).await?)
+    }
+
+    async fn get_weth_balance(&self, addr: &Address) -> Result<U256> {
+        Ok(self.weth.balance_of(*addr).await?)
+    }
+
+    async fn get_usdt_balance(&self, addr: &Address) -> Result<U256> {
+        Ok(self.usdt.balance_of(*addr).await?)
+    }
+
+    async fn get_weth_lend_pool_approval(
+        &self,
+        addr: &Address,
+        lend_pool: &Address,
+    ) -> Result<U256> {
+        Ok(self.weth.allowance(*addr, *lend_pool).await?)
+    }
+
+    async fn get_usdt_lend_pool_approval(
+        &self,
+        addr: &Address,
+        lend_pool: &Address,
+    ) -> Result<U256> {
+        Ok(self.usdt.allowance(*addr, *lend_pool).await?)
     }
 }

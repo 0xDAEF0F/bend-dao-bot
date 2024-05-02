@@ -1,10 +1,10 @@
 use crate::{
     benddao::loan::{Auction, Loan, NftAsset, ReserveAsset, Status},
     constants::{
-        addresses::WETH,
+        addresses::{USDT, WETH},
         bend_dao::{LEND_POOL, LEND_POOL_LOAN, NFT_ORACLE, RESERVE_ORACLE},
     },
-    ConfigVars, LendPool, LendPoolLoan, LoanData, NFTOracle, ReserveOracle, Weth,
+    ConfigVars, Erc20, LendPool, LendPoolLoan, LoanData, NFTOracle, ReserveOracle, Weth,
 };
 use anyhow::{bail, Result};
 use ethers::{
@@ -29,6 +29,7 @@ pub struct GlobalProvider {
     pub reserve_oracle: ReserveOracle<Provider<Ws>>,
     pub lend_pool_with_signer: LendPool<SignerMiddleware<Arc<Provider<Ws>>, Wallet<SigningKey>>>,
     pub weth: Weth<SignerMiddleware<Arc<Provider<Ws>>, Wallet<SigningKey>>>,
+    pub usdt: Erc20<SignerMiddleware<Arc<Provider<Ws>>, Wallet<SigningKey>>>,
 }
 
 impl GlobalProvider {
@@ -65,6 +66,9 @@ impl GlobalProvider {
         let address = WETH.parse::<Address>()?;
         let weth = Weth::new(address, signer_provider.clone());
 
+        let address = USDT.parse::<Address>()?;
+        let usdt = Erc20::new(address, signer_provider.clone());
+
         Ok(GlobalProvider {
             local_wallet,
             provider,
@@ -75,6 +79,7 @@ impl GlobalProvider {
             reserve_oracle,
             lend_pool_with_signer,
             weth,
+            usdt,
         })
     }
 

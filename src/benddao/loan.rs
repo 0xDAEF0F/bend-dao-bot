@@ -24,6 +24,22 @@ pub struct Loan {
     pub nft_asset: NftAsset,
 }
 
+impl Display for Loan {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        // EXAMPLE
+        // BAYC #1234 | USDT | HF: 1.0004 | Active
+        let display_string = format!(
+            "{:?} #{} | {:?} | HF: {:.4} | {}",
+            self.nft_asset,
+            self.nft_token_id,
+            self.reserve_asset,
+            self.health_factor(),
+            self.status
+        );
+        write!(f, "{display_string}")
+    }
+}
+
 impl Loan {
     pub async fn get_total_debt_eth(&self, prices_client: &PricesClient) -> Result<U256> {
         match self.reserve_asset {
@@ -57,6 +73,17 @@ pub enum Status {
     Active,
     Auction(Auction),
     RepaidDefaulted,
+}
+
+impl Display for Status {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match &self {
+            Self::Active => write!(f, "Active"),
+            Self::Auction(_) => write!(f, "Auction"),
+            Self::Created => write!(f, "Created"),
+            Self::RepaidDefaulted => write!(f, "RepaidDefaulted"),
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Copy, Clone)]

@@ -4,16 +4,15 @@ pub mod loan;
 use crate::{
     benddao::{
         balances::Balances,
-        loan::{Loan, ReserveAsset, Status},
+        loan::{Loan, Status},
     },
     constants::{
-        addresses::USDT,
         bend_dao::LEND_POOL,
         math::{ONE_DAY, ONE_MINUTE},
     },
     global_provider::GlobalProvider,
     prices_client::PricesClient,
-    ConfigVars, Erc20,
+    ConfigVars,
 };
 use anyhow::{anyhow, bail, Result};
 use ethers::{
@@ -73,22 +72,32 @@ impl BendDao {
             .balance_of(local_wallet_address)
             .await?;
 
+        let usdt = self
+            .global_provider
+            .usdt
+            .balance_of(local_wallet_address)
+            .await?;
+
         let lend_pool_address: Address = LEND_POOL.parse()?;
-        let approval_amount = self
+
+        let weth_approval_amount = self
             .global_provider
             .weth
             .allowance(local_wallet_address, lend_pool_address)
             .await?;
 
-        let usdt: Address = USDT.parse()?;
-        let usdt = Erc20::new(usdt, self.get_provider());
-        let usdt = usdt.balance_of(local_wallet_address).await?;
+        let usdt_approval_amount = self
+            .global_provider
+            .usdt
+            .allowance(local_wallet_address, lend_pool_address)
+            .await?;
 
         let balances = Balances {
             eth,
             weth,
             usdt,
-            is_lend_pool_approved: approval_amount == U256::MAX,
+            is_usdt_lend_pool_approved: usdt_approval_amount == U256::MAX,
+            is_weth_lend_pool_approved: weth_approval_amount == U256::MAX,
         };
 
         debug!("{:?}", balances);
@@ -157,33 +166,29 @@ impl BendDao {
                 .await?
                 .expect("loan in monitored_loans pool shouldn't be `None`");
 
+            info!("{}", updated_loan);
+
             if let Status::Auction(_auction) = updated_loan.status {
-                warn!("loan_id: {loan_id} in monitored_loans transitioned to `Status::Auction`");
-                continue;
-            }
-
-            if !updated_loan.should_monitor() {
-                pending_loan_ids_to_remove.push(updated_loan.loan_id);
-            }
-
-            if !updated_loan.is_auctionable() {
-                info!(
-                    "{:?} #{} {:?} | health_factor: {:.4} | status: HEALTHY",
-                    updated_loan.nft_asset,
-                    updated_loan.nft_token_id,
-                    updated_loan.reserve_asset,
-                    updated_loan.health_factor()
+                warn!(
+                    "{:>5}",
+                    "transitioned to `Status::Auction` and was not handled by event listener"
                 );
                 continue;
             }
 
-            // IS PROFITABLE SECTION~
+            if !updated_loan.should_monitor() {
+                info!("{:>5}", "removing from the monitored loans");
+                pending_loan_ids_to_remove.push(updated_loan.loan_id);
+            }
 
-            info!(
-                "{:?} #{} | status: AUCTIONABLE",
-                updated_loan.nft_asset, updated_loan.nft_token_id
-            );
+            if !updated_loan.is_auctionable() {
+                info!("{:>5}", "loan not auctionable. skipping");
+                continue;
+            }
 
+            info!("{:>5}", "loan auctionable");
+
+            // IS PROFITABLE
             let best_bid = self
                 .prices_client
                 .get_best_nft_bid(updated_loan.nft_asset)
@@ -196,49 +201,26 @@ impl BendDao {
             if best_bid < bidding_amount {
                 let debt_human_readable = total_debt_eth.as_u128() as f64 / 1e18;
                 let best_bid_human_readable = best_bid.as_u128() as f64 / 1e18;
-                info!(
-                    "{:?} #{} unprofitable | total_debt: {:.2} > best_bid: {:.2}",
-                    updated_loan.nft_asset,
-                    updated_loan.nft_token_id,
-                    debt_human_readable,
-                    best_bid_human_readable
+                let string = format!(
+                    "unprofitable | total debt: {:.2} > best bid: {:.2}",
+                    debt_human_readable, best_bid_human_readable
                 );
+                info!("{:>5}", string);
                 continue;
             }
-
-            //
 
             let potential_profit = format_ether(best_bid - bidding_amount);
             let potential_profit = potential_profit
                 .parse::<f64>()
                 .expect("unable to convert ETH to f64");
             info!(
-                "{:?} #{} - potential profit: {:.4} ETH",
-                updated_loan.nft_asset, updated_loan.nft_token_id, potential_profit
+                "{:>5}",
+                format!("potential profit: {:.4} ETH", potential_profit)
             );
+            // IS PROFITABLE [END]
 
-            if updated_loan.reserve_asset == ReserveAsset::Usdt {
-                warn!(
-                    "USDT currently not supported. Missing {} ETH opportunity",
-                    potential_profit
-                );
-                continue;
-            }
-
-            let balances = &self.balances;
-
-            if !balances.is_lend_pool_approved {
-                warn!("lend pool not approved to handle WETH. please approve it.");
-                continue;
-            }
-
-            if bidding_amount > balances.weth {
-                warn!("not enough WETH to participate in auction");
-                continue;
-            }
-
-            if !balances.has_enough_gas_to_auction_or_liquidate() {
-                warn!("not enough ETH to pay for the auction gas costs");
+            // already handles logging
+            if !self.balances.can_jump_to_auction(&updated_loan) {
                 continue;
             }
 
@@ -266,10 +248,6 @@ impl BendDao {
         }
 
         Ok(())
-    }
-
-    pub async fn start_auction(&mut self, _loan: &Loan) -> Option<()> {
-        todo!()
     }
 
     pub fn get_next_liquidation_instant(&self) -> Option<Instant> {

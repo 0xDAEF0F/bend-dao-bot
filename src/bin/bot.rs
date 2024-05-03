@@ -19,7 +19,7 @@ use tokio::time::{sleep, sleep_until, Duration};
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    dotenv()?;
+    let _ = dotenv();
     env_logger::init();
 
     let config_vars = ConfigVars::try_new()?;

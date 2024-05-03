@@ -156,17 +156,17 @@ fn task_four(bend_dao_state: Arc<Mutex<BendDao>>) -> JoinHandle<Result<()>> {
                     let liq_result = bend_dao_state.lock().await.try_liquidate(loan_id).await;
                     match liq_result {
                         Ok(()) => {
-                            warn!("loan was successfully liquidated");
+                            let log = format!("loan was successfully liquidated");
+                            warn!("{log}");
+                            let _ = bend_dao_state.lock().await.slack_bot.send_msg(&log).await;
                         }
                         Err(e) => {
-                            error!("bot.rs 173: {}", e);
-                            error!("could not liquidate loan");
+                            let log = format!("could not liquidate loan: {}", e);
+                            error!("{log}");
+                            let mut lock = bend_dao_state.lock().await;
+                            let _ = lock.slack_bot.send_msg(&log).await;
                             // do not try to liquidate again
-                            bend_dao_state
-                                .lock()
-                                .await
-                                .our_pending_auctions
-                                .remove(&loan_id);
+                            lock.our_pending_auctions.remove(&loan_id);
                         }
                     }
                 }

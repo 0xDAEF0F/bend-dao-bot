@@ -240,7 +240,7 @@ impl BendDao {
         let balances = self.global_provider.get_balances().await?;
 
         if !balances.has_enough_gas_to_auction_or_liquidate() {
-            bail!("not enough WETH balance to liquidate")
+            bail!("not enough ETH balance to liquidate")
         }
 
         if auction.best_bid < loan.total_debt {
@@ -299,10 +299,12 @@ impl BendDao {
 
         save_repaid_defaulted_loans(&repaid_defaulted_loans_set).await?;
 
-        info!(
-            "a total of {} loans are set for monitoring",
+        let log = format!(
+            "refreshed all loans in benddao. a total of {} loans are set for monitoring",
             self.monitored_loans.len()
         );
+        info!("{log}");
+        let _ = self.slack_bot.send_msg(&log).await;
 
         Ok(())
     }

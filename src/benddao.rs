@@ -22,7 +22,10 @@ use std::{
     collections::{BTreeSet, HashMap, HashSet},
     sync::Arc,
 };
-use tokio::time::{Duration, Instant};
+use tokio::{
+    time::{Duration, Instant},
+    try_join,
+};
 
 pub struct BendDao {
     monitored_loans: HashSet<U256>,
@@ -92,12 +95,10 @@ impl BendDao {
     pub async fn handle_new_block(&mut self) -> Result<()> {
         info!("refreshing monitored loans");
 
-        let mut pending_loan_ids_to_remove = Vec::new();
-
-        for loan_id in self.monitored_loans.iter() {
+        for loan_id in self.monitored_loans.clone() {
             let updated_loan = self
                 .global_provider
-                .get_updated_loan(*loan_id)
+                .get_updated_loan(loan_id)
                 .await?
                 .expect("loan in monitored_loans pool shouldn't be `None`");
 
@@ -110,7 +111,7 @@ impl BendDao {
 
             if !updated_loan.should_monitor() {
                 info!(">> removing from the monitored loans");
-                pending_loan_ids_to_remove.push(updated_loan.loan_id);
+                self.monitored_loans.remove(&loan_id);
             }
 
             if !updated_loan.is_auctionable() {
@@ -121,27 +122,27 @@ impl BendDao {
             info!(">> loan auctionable");
 
             // IS PROFITABLE
-            let best_bid = self
-                .prices_client
-                .get_best_nft_bid(updated_loan.nft_asset)
-                .await?; // WEI
-
-            let total_debt_eth = updated_loan.get_total_debt_eth(&self.prices_client).await?;
+            let (best_bid_eth, total_debt_eth) = try_join!(
+                self.prices_client.get_best_nft_bid(updated_loan.nft_asset),
+                updated_loan.get_total_debt_eth(&self.prices_client)
+            )?;
 
             let bidding_amount = calculate_bidding_amount(total_debt_eth);
 
-            if best_bid < bidding_amount {
+            if best_bid_eth < bidding_amount {
                 let debt_human_readable = total_debt_eth.as_u128() as f64 / 1e18;
-                let best_bid_human_readable = best_bid.as_u128() as f64 / 1e18;
-                let string = format!(
-                    ">> unprofitable | total debt: {:.2} > best bid: {:.2}",
-                    debt_human_readable, best_bid_human_readable
+                let best_bid_human_readable = best_bid_eth.as_u128() as f64 / 1e18;
+                info!(
+                    "{}",
+                    format!(
+                        ">> unprofitable | total debt: {:.2} > best bid: {:.2}",
+                        debt_human_readable, best_bid_human_readable
+                    )
                 );
-                info!("{string}");
                 continue;
             }
 
-            let potential_profit = format_ether(best_bid - bidding_amount);
+            let potential_profit = format_ether(best_bid_eth - bidding_amount);
             let potential_profit = potential_profit
                 .parse::<f64>()
                 .expect("unable to convert ETH to f64");
@@ -160,7 +161,10 @@ impl BendDao {
 
             match self
                 .global_provider
-                .start_auction(&updated_loan, bidding_amount)
+                .start_auction(
+                    &updated_loan,
+                    calculate_bidding_amount(updated_loan.total_debt),
+                )
                 .await
             {
                 Ok(()) => {
@@ -175,10 +179,6 @@ impl BendDao {
                     error!("{e}");
                 }
             }
-        }
-
-        for loan_id in pending_loan_ids_to_remove {
-            self.monitored_loans.remove(&loan_id);
         }
 
         Ok(())
@@ -277,10 +277,8 @@ impl BendDao {
                 }
             }
 
-            if loan.status == Status::Active {
-                if loan.should_monitor() {
-                    self.monitored_loans.insert(loan.loan_id);
-                }
+            if loan.should_monitor() {
+                self.monitored_loans.insert(loan.loan_id);
             }
         }
 

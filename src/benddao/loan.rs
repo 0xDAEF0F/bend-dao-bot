@@ -7,6 +7,7 @@ use crate::prices_client::PricesClient;
 use anyhow::{bail, Result};
 use core::fmt;
 use ethers::types::{Address, U256};
+use std::any::Any;
 use std::fmt::{Debug, Display, Formatter};
 
 #[derive(Debug, Clone)]
@@ -52,9 +53,12 @@ impl Loan {
         self.health_factor < U256::exp10(18)
     }
 
-    // less than a health factor of 1.05 returns true
+    /// `Status::Active && health_factor < 1.08e18`
     pub fn should_monitor(&self) -> bool {
-        self.health_factor < HEALTH_FACTOR_THRESHOLD_TO_MONITOR.into()
+        match self.status {
+            Status::Active => self.health_factor < HEALTH_FACTOR_THRESHOLD_TO_MONITOR.into(),
+            _ => false,
+        }
     }
 
     // for displaying purposes

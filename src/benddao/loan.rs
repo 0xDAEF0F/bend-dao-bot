@@ -7,7 +7,6 @@ use crate::prices_client::PricesClient;
 use anyhow::{bail, Result};
 use core::fmt;
 use ethers::types::{Address, U256};
-use std::any::Any;
 use std::fmt::{Debug, Display, Formatter};
 
 #[derive(Debug, Clone)]

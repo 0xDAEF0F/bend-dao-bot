@@ -8,6 +8,7 @@ use crate::{
     constants::math::{ONE_DAY, ONE_MINUTE},
     global_provider::GlobalProvider,
     prices_client::PricesClient,
+    slack_bot::SlackBot,
     utils::{calculate_bidding_amount, get_repaid_defaulted_loans, save_repaid_defaulted_loans},
     ConfigVars,
 };
@@ -32,15 +33,17 @@ pub struct BendDao {
     pub our_pending_auctions: HashMap<U256, Instant>, // loan_id -> Instant
     global_provider: GlobalProvider,
     prices_client: PricesClient,
+    pub slack_bot: SlackBot,
 }
 
 impl BendDao {
     pub async fn try_new(config_vars: ConfigVars) -> Result<BendDao> {
         Ok(BendDao {
             monitored_loans: HashSet::new(),
-            global_provider: GlobalProvider::try_new(config_vars.clone()).await?,
             our_pending_auctions: HashMap::new(),
-            prices_client: PricesClient::new(config_vars),
+            global_provider: GlobalProvider::try_new(config_vars.clone()).await?,
+            prices_client: PricesClient::new(config_vars.clone()),
+            slack_bot: SlackBot::new(config_vars.slack_url),
         })
     }
 
@@ -67,6 +70,8 @@ impl BendDao {
                 return Ok(());
             }
             Status::Auction(auction) => {
+                let msg = format!("auction happening - {}", loan);
+                let _ = self.slack_bot.send_msg(&msg).await;
                 // remove from the system. if the loan is redeemed it will be added back
                 self.monitored_loans.remove(&loan_id);
                 if !auction.is_ours(&self.global_provider.local_wallet) {
@@ -150,12 +155,17 @@ impl BendDao {
                 "{}",
                 format!(">> potential profit: {:.4} ETH", potential_profit)
             );
+            let _ = self
+                .slack_bot
+                .send_msg(&format!("potential profit: {:.4} ETH", potential_profit))
+                .await;
             // IS PROFITABLE [END]
 
             let balances = self.global_provider.get_balances().await?;
 
-            // already handles logging
-            if !balances.can_initiate_auction(&updated_loan) {
+            if let (false, log) = balances.can_initiate_auction_with_log(&updated_loan) {
+                warn!("{log}");
+                let _ = self.slack_bot.send_msg(&log).await;
                 continue;
             }
 
@@ -169,12 +179,17 @@ impl BendDao {
             {
                 Ok(()) => {
                     info!(">> started auction successfully");
+                    let _ = self
+                        .slack_bot
+                        .send_msg("started auction successfully")
+                        .await;
                     let cushion_time = ONE_MINUTE * 5;
                     let instant = Instant::now() + Duration::from_secs(ONE_DAY + cushion_time);
                     self.our_pending_auctions
                         .insert(updated_loan.loan_id, instant);
                 }
                 Err(e) => {
+                    let _ = self.slack_bot.send_msg("failed to start auction").await;
                     error!(">> failed to start auction");
                     error!("{e}");
                 }

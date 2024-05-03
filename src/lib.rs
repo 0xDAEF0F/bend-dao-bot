@@ -9,7 +9,6 @@ pub mod slack_bot;
 pub mod utils;
 
 use anyhow::Result;
-use dotenv::dotenv;
 use ethers::contract::abigen;
 
 abigen!(LendPool, "abi/LendPool.json");
@@ -26,22 +25,23 @@ pub struct ConfigVars {
     pub mnemonic: String,
     pub reservoir_api_key: String,
     pub coinmarketcap_api_key: String,
+    pub slack_url: String,
 }
 
 impl ConfigVars {
     pub fn try_new() -> Result<ConfigVars> {
-        dotenv()?;
-
         let wss_rpc_url = std::env::var("MAINNET_RPC_URL_WS")?;
         let mnemonic = std::env::var("MNEMONIC")?;
         let reservoir_api_key = std::env::var("RESERVOIR_API_KEY")?;
         let coinmarketcap_api_key = std::env::var("COINMARKETCAP_API_KEY")?;
+        let slack_url = std::env::var("SLACK_URL")?;
 
         let config_vars = ConfigVars {
             wss_rpc_url,
             mnemonic,
             reservoir_api_key,
             coinmarketcap_api_key,
+            slack_url,
         };
 
         Ok(config_vars)

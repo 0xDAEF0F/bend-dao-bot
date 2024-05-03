@@ -1,7 +1,6 @@
 use anyhow::{bail, Result};
 use reqwest::{Client, StatusCode};
 use serde_json::json;
-use std::env;
 
 pub struct SlackBot {
     url: String,
@@ -9,11 +8,11 @@ pub struct SlackBot {
 }
 
 impl SlackBot {
-    pub fn try_new() -> Result<SlackBot> {
-        Ok(SlackBot {
-            url: env::var("SLACK_URL")?,
+    pub fn new(url: String) -> SlackBot {
+        SlackBot {
+            url,
             http_client: Client::default(),
-        })
+        }
     }
 
     pub async fn send_msg(&self, msg: &str) -> Result<()> {
@@ -35,13 +34,12 @@ impl SlackBot {
 #[cfg(test)]
 mod bot_test {
     use super::*;
-    use dotenv::dotenv;
 
     #[tokio::test]
     async fn test_can_send_message_to_slack() -> Result<()> {
-        dotenv()?;
+        let url = dotenv::var("SLACK_URL")?;
 
-        let slack_bot = SlackBot::try_new()?;
+        let slack_bot = SlackBot::new(url);
 
         slack_bot.send_msg("hello from rust, again").await?;
 

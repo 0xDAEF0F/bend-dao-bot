@@ -93,6 +93,11 @@ fn task_one(
                 }
                 LendPoolEvents::LiquidateFilter(evt) => {
                     if let Ok(nft_asset) = NftAsset::try_from(evt.nft_asset) {
+                        let msg = format!(
+                            "liquidation happened. {:?} #{}",
+                            nft_asset, evt.nft_token_id
+                        );
+                        let _ = bd_lock.slack_bot.send_msg(&msg).await;
                         // loan was already taken off the system when the auction happened
                         info!("{:?} #{} liquidated", nft_asset, evt.nft_token_id);
                     }

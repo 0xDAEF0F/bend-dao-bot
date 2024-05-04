@@ -43,7 +43,7 @@ impl BendDao {
             our_pending_auctions: HashMap::new(),
             global_provider: GlobalProvider::try_new(config_vars.clone()).await?,
             prices_client: PricesClient::new(config_vars.clone()),
-            slack_bot: SlackBot::new(config_vars.slack_url),
+            slack_bot: SlackBot::new(config_vars),
         })
     }
 

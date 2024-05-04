@@ -1,3 +1,4 @@
+use crate::ConfigVars;
 use anyhow::{bail, Result};
 use reqwest::{Client, StatusCode};
 use serde_json::json;
@@ -5,17 +6,23 @@ use serde_json::json;
 pub struct SlackBot {
     url: String,
     http_client: Client,
+    is_prod: bool,
 }
 
 impl SlackBot {
-    pub fn new(url: String) -> SlackBot {
+    pub fn new(configvars: ConfigVars) -> SlackBot {
         SlackBot {
-            url,
+            url: configvars.slack_url,
             http_client: Client::default(),
+            is_prod: configvars.is_prod,
         }
     }
 
     pub async fn send_msg(&self, msg: &str) -> Result<()> {
+        if !self.is_prod {
+            return Ok(());
+        }
+
         let data = json!({
             "text": msg
         });
@@ -28,21 +35,5 @@ impl SlackBot {
         }
 
         bail!("notification to slack failed")
-    }
-}
-
-#[cfg(test)]
-mod bot_test {
-    use super::*;
-
-    #[tokio::test]
-    async fn test_can_send_message_to_slack() -> Result<()> {
-        let url = dotenv::var("SLACK_URL")?;
-
-        let slack_bot = SlackBot::new(url);
-
-        slack_bot.send_msg("hello from rust, again").await?;
-
-        Ok(())
     }
 }

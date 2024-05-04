@@ -26,6 +26,7 @@ pub struct ConfigVars {
     pub reservoir_api_key: String,
     pub coinmarketcap_api_key: String,
     pub slack_url: String,
+    pub is_prod: bool,
 }
 
 impl ConfigVars {
@@ -35,6 +36,9 @@ impl ConfigVars {
         let reservoir_api_key = std::env::var("RESERVOIR_API_KEY")?;
         let coinmarketcap_api_key = std::env::var("COINMARKETCAP_API_KEY")?;
         let slack_url = std::env::var("SLACK_URL")?;
+        let is_prod = std::env::var("ENVIRONMENT")
+            .map(|str| str.to_uppercase() == "PRODUCTION")
+            .unwrap_or_else(|_| false);
 
         let config_vars = ConfigVars {
             wss_rpc_url,
@@ -42,6 +46,7 @@ impl ConfigVars {
             reservoir_api_key,
             coinmarketcap_api_key,
             slack_url,
+            is_prod,
         };
 
         Ok(config_vars)

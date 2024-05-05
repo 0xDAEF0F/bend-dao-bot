@@ -272,6 +272,7 @@ impl BendDao {
         info!("querying information for {} loans", iter.clone().count());
 
         let all_loans = self.global_provider.get_loans_from_iter(iter).await?;
+        let mut display_monitored_loans = String::from("");
 
         for loan in all_loans {
             // collections not allowed to trade in production
@@ -294,14 +295,16 @@ impl BendDao {
 
             if loan.should_monitor() {
                 self.monitored_loans.insert(loan.loan_id);
+                display_monitored_loans.push_str(&format!("{}\n", loan))
             }
         }
 
         save_repaid_defaulted_loans(&repaid_defaulted_loans_set).await?;
 
         let log = format!(
-            "refreshed all loans in benddao. a total of {} loans are set for monitoring",
-            self.monitored_loans.len()
+            "refreshed all loans in benddao. a total of {} loans are set for monitoring.\n{}",
+            self.monitored_loans.len(),
+            display_monitored_loans
         );
         info!("{log}");
         let _ = self.slack_bot.send_msg(&log).await;

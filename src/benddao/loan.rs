@@ -111,7 +111,7 @@ impl NftAsset {
             NftAsset::Bayc => true,
             NftAsset::StBayc => true,
             NftAsset::CloneX => false,
-            NftAsset::PudgyPenguins => false,
+            NftAsset::PudgyPenguins => true,
             NftAsset::Mayc => false,
         }
     }

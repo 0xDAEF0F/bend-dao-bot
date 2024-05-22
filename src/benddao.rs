@@ -15,7 +15,7 @@ use crate::{
 use anyhow::{anyhow, bail, Result};
 use ethers::{
     providers::{Provider, Ws},
-    types::U256,
+    types::{U256, U64},
     utils::format_ether,
 };
 use log::{error, info, warn};
@@ -97,7 +97,7 @@ impl BendDao {
         Ok(())
     }
 
-    pub async fn handle_new_block(&mut self) -> Result<()> {
+    pub async fn handle_new_block(&mut self, block_number: Option<U64>) -> Result<()> {
         info!("refreshing monitored loans");
 
         for loan_id in self.monitored_loans.clone() {
@@ -115,16 +115,31 @@ impl BendDao {
             }
 
             if !updated_loan.should_monitor() {
-                info!(">> removing from the monitored loans");
+                let msg = format!(
+                    "removing {} #{} from monitored loans. HF: {:.2}",
+                    updated_loan.nft_asset,
+                    updated_loan.nft_token_id,
+                    updated_loan.health_factor()
+                );
+                info!("{msg}");
+                let _ = self.slack_bot.send_msg(&msg).await;
                 self.monitored_loans.remove(&loan_id);
             }
 
             if !updated_loan.is_auctionable() {
-                info!(">> loan not auctionable. skipping");
+                info!(
+                    "{} #{} not auctionable. skipping...",
+                    updated_loan.nft_asset, updated_loan.nft_token_id
+                );
                 continue;
             }
 
-            info!(">> loan auctionable");
+            let msg = format!(
+                "{} #{} HF below 1. Checking profitability",
+                updated_loan.nft_asset, updated_loan.nft_token_id
+            );
+            info!("{msg}");
+            let _ = self.slack_bot.send_msg(&msg).await;
 
             // IS PROFITABLE
             let (best_bid_eth, total_debt_eth) = try_join!(
@@ -155,10 +170,12 @@ impl BendDao {
                 "{}",
                 format!(">> potential profit: {:.4} ETH", potential_profit)
             );
-            let _ = self
-                .slack_bot
-                .send_msg(&format!("potential profit: {:.4} ETH", potential_profit))
-                .await;
+            let slack_msg = format!(
+                "potential profit of ~ {:.4} ETH for {} #{}\nproceeding to start auction...",
+                potential_profit, updated_loan.nft_asset, updated_loan.nft_token_id
+            );
+            let _ = self.slack_bot.send_msg(&slack_msg).await;
+
             // IS PROFITABLE [END]
 
             let balances = self.global_provider.get_balances().await?;
@@ -178,22 +195,40 @@ impl BendDao {
                 .await
             {
                 Ok(()) => {
-                    info!(">> started auction successfully");
-                    let _ = self
-                        .slack_bot
-                        .send_msg("started auction successfully")
-                        .await;
+                    let msg = format!(
+                        "@here started auction successfully for {} #{}",
+                        updated_loan.nft_asset, updated_loan.nft_token_id
+                    );
+                    info!("{msg}");
+                    let _ = self.slack_bot.send_msg(&msg).await;
                     let cushion_time = ONE_MINUTE * 5;
                     let instant = Instant::now() + Duration::from_secs(ONE_DAY + cushion_time);
                     self.our_pending_auctions
                         .insert(updated_loan.loan_id, instant);
                 }
                 Err(e) => {
-                    let _ = self.slack_bot.send_msg("failed to start auction").await;
-                    error!(">> failed to start auction");
+                    let msg = format!(
+                        "@here failed to start auction for {} #{}",
+                        updated_loan.nft_asset, updated_loan.nft_token_id
+                    );
+                    let _ = self.slack_bot.send_msg(&msg).await;
+                    error!("{msg}");
                     error!("{e}");
                 }
             }
+        }
+
+        if block_number.is_some_and(|x| x.as_u64() % 300 == 0) {
+            let mut msg = format!("block: {}\n", block_number.unwrap().as_u64());
+            for loan_id in self.monitored_loans.clone() {
+                let updated_loan = self
+                    .global_provider
+                    .get_updated_loan(loan_id)
+                    .await?
+                    .expect("loan in monitored_loans pool shouldn't be `None`");
+                msg.push_str(&format!("{updated_loan}\n"));
+            }
+            let _ = self.slack_bot.send_msg(&msg).await;
         }
 
         Ok(())
@@ -302,7 +337,7 @@ impl BendDao {
         save_repaid_defaulted_loans(&repaid_defaulted_loans_set).await?;
 
         let log = format!(
-            "refreshed all loans in benddao. a total of {} loans are set for monitoring.\n{}",
+            "refreshed all loans in benddao. {} loans are set for monitoring.\n{}",
             self.monitored_loans.len(),
             display_monitored_loans
         );

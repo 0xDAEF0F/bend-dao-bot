@@ -124,7 +124,11 @@ fn task_two(
 
         while let Some(block) = stream.next().await {
             info!("new block: {:?}", block.number);
-            bend_dao_state.lock().await.handle_new_block().await?;
+            bend_dao_state
+                .lock()
+                .await
+                .handle_new_block(block.number)
+                .await?;
         }
 
         info!("ending task for new blocks");

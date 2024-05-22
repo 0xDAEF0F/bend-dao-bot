@@ -332,7 +332,7 @@ impl BendDao {
     }
 
     pub async fn notify_and_log_monitored_loans(&self, block_number: U64) -> Result<()> {
-        let mut msg = format!("*Block: #{}*\n", block_number);
+        let mut msg = format!("~~~ Block: *#{}* ~~~\n", block_number);
 
         let range = self.monitored_loans.iter().map(|loan_id| loan_id.as_u64());
         let mut loans = self.global_provider.get_loans_from_iter(range).await?;
@@ -341,7 +341,7 @@ impl BendDao {
 
         for loan in loans {
             msg.push_str(&format!(
-                "{:?} #{} -- *HF: {:.4}*\n",
+                "{:?} #{} | HF: *{:.5}*\n",
                 loan.nft_asset,
                 loan.nft_token_id,
                 loan.health_factor()

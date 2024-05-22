@@ -337,7 +337,6 @@ impl BendDao {
         let range = self.monitored_loans.iter().map(|loan_id| loan_id.as_u64());
         let mut loans = self.global_provider.get_loans_from_iter(range).await?;
         loans.sort_by_key(|x| x.health_factor);
-        loans.reverse();
 
         for loan in loans {
             msg.push_str(&format!(

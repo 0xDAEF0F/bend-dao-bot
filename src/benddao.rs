@@ -14,7 +14,7 @@ use crate::{
 };
 use anyhow::{anyhow, bail, Result};
 use ethers::{
-    providers::{Provider, Ws},
+    providers::{Middleware, Provider, Ws},
     types::{U256, U64},
     utils::format_ether,
 };
@@ -98,8 +98,6 @@ impl BendDao {
     }
 
     pub async fn handle_new_block(&mut self, block_number: Option<U64>) -> Result<()> {
-        info!("refreshing monitored loans");
-
         for loan_id in self.monitored_loans.clone() {
             let updated_loan = self
                 .global_provider
@@ -107,10 +105,8 @@ impl BendDao {
                 .await?
                 .expect("loan in monitored_loans pool shouldn't be `None`");
 
-            info!("{}", updated_loan);
-
             if let Status::Auction(_auction) = updated_loan.status {
-                warn!(">> transitioned to `Status::Auction` and was not handled by event listener");
+                warn!("transitioned to `Status::Auction` and was not handled by event listener");
                 continue;
             }
 
@@ -218,17 +214,10 @@ impl BendDao {
             }
         }
 
+        // send slack message and log every 300 blocks the monitored loans
         if block_number.is_some_and(|x| x.as_u64() % 300 == 0) {
-            let mut msg = format!("block: {}\n", block_number.unwrap().as_u64());
-            for loan_id in self.monitored_loans.clone() {
-                let updated_loan = self
-                    .global_provider
-                    .get_updated_loan(loan_id)
-                    .await?
-                    .expect("loan in monitored_loans pool shouldn't be `None`");
-                msg.push_str(&format!("{updated_loan}\n"));
-            }
-            let _ = self.slack_bot.send_msg(&msg).await;
+            let block_number = block_number.unwrap();
+            self.notify_and_log_monitored_loans(block_number).await?;
         }
 
         Ok(())
@@ -336,13 +325,31 @@ impl BendDao {
 
         save_repaid_defaulted_loans(&repaid_defaulted_loans_set).await?;
 
-        let log = format!(
-            "Refreshed all loans. *{}* loans are set for monitoring.\n{}",
-            self.monitored_loans.len(),
-            display_monitored_loans
-        );
-        info!("{log}");
-        let _ = self.slack_bot.send_msg(&log).await;
+        let block_number = self.global_provider.provider.get_block_number().await?;
+        self.notify_and_log_monitored_loans(block_number).await?;
+
+        Ok(())
+    }
+
+    pub async fn notify_and_log_monitored_loans(&self, block_number: U64) -> Result<()> {
+        let mut msg = format!("*Block: #{}*\n", block_number);
+
+        let range = self.monitored_loans.iter().map(|loan_id| loan_id.as_u64());
+        let mut loans = self.global_provider.get_loans_from_iter(range).await?;
+        loans.sort_by_key(|x| x.health_factor);
+        loans.reverse();
+
+        for loan in loans {
+            msg.push_str(&format!(
+                "{:?} #{} -- *HF: {:.4}*\n",
+                loan.nft_asset,
+                loan.nft_token_id,
+                loan.health_factor()
+            ));
+        }
+
+        let _ = self.slack_bot.send_msg(&msg).await;
+        info!("{msg}");
 
         Ok(())
     }

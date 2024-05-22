@@ -123,7 +123,10 @@ fn task_two(
         let mut stream = provider.subscribe_blocks().await?;
 
         while let Some(block) = stream.next().await {
-            info!("new block: {:?}", block.number);
+            info!(
+                "new block: {:?}\nRefreshing monitored loans...",
+                block.number
+            );
             bend_dao_state
                 .lock()
                 .await

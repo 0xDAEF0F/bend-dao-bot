@@ -116,7 +116,7 @@ impl BendDao {
 
             if !updated_loan.should_monitor() {
                 let msg = format!(
-                    "removing {} #{} from monitored loans. HF: {:.2}",
+                    "removing {:?} #{} from monitored loans. HF: {:.2}",
                     updated_loan.nft_asset,
                     updated_loan.nft_token_id,
                     updated_loan.health_factor()
@@ -128,14 +128,14 @@ impl BendDao {
 
             if !updated_loan.is_auctionable() {
                 info!(
-                    "{} #{} not auctionable. skipping...",
+                    "{:?} #{} not auctionable. skipping...",
                     updated_loan.nft_asset, updated_loan.nft_token_id
                 );
                 continue;
             }
 
             let msg = format!(
-                "{} #{} HF below 1. Checking profitability",
+                "{:?} #{} HF below 1. Checking profitability",
                 updated_loan.nft_asset, updated_loan.nft_token_id
             );
             info!("{msg}");
@@ -171,7 +171,7 @@ impl BendDao {
                 format!(">> potential profit: {:.4} ETH", potential_profit)
             );
             let slack_msg = format!(
-                "potential profit of ~ {:.4} ETH for {} #{}\nproceeding to start auction...",
+                "potential profit of ~ {:.4} ETH for {:?} #{}\nproceeding to start auction...",
                 potential_profit, updated_loan.nft_asset, updated_loan.nft_token_id
             );
             let _ = self.slack_bot.send_msg(&slack_msg).await;
@@ -196,7 +196,7 @@ impl BendDao {
             {
                 Ok(()) => {
                     let msg = format!(
-                        "@here started auction successfully for {} #{}",
+                        "@here started auction successfully for {:?} #{}",
                         updated_loan.nft_asset, updated_loan.nft_token_id
                     );
                     info!("{msg}");
@@ -208,7 +208,7 @@ impl BendDao {
                 }
                 Err(e) => {
                     let msg = format!(
-                        "@here failed to start auction for {} #{}",
+                        "@here failed to start auction for {:?} #{}",
                         updated_loan.nft_asset, updated_loan.nft_token_id
                     );
                     let _ = self.slack_bot.send_msg(&msg).await;
@@ -337,7 +337,7 @@ impl BendDao {
         save_repaid_defaulted_loans(&repaid_defaulted_loans_set).await?;
 
         let log = format!(
-            "refreshed all loans in benddao. {} loans are set for monitoring.\n{}",
+            "Refreshed all loans. *{}* loans are set for monitoring.\n{}",
             self.monitored_loans.len(),
             display_monitored_loans
         );

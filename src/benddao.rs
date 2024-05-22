@@ -338,7 +338,7 @@ impl BendDao {
         let mut loans = self.global_provider.get_loans_from_iter(range).await?;
         loans.sort_by_key(|x| x.health_factor);
 
-        for loan in loans {
+        for loan in loans.into_iter().take(5) {
             msg.push_str(&format!(
                 "{:?} #{} | HF: *{:.5}*\n",
                 loan.nft_asset,

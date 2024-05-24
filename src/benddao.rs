@@ -98,13 +98,11 @@ impl BendDao {
     }
 
     pub async fn handle_new_block(&mut self, block_number: Option<U64>) -> Result<()> {
-        for loan_id in self.monitored_loans.clone() {
-            let updated_loan = self
-                .global_provider
-                .get_updated_loan(loan_id)
-                .await?
-                .expect("loan in monitored_loans pool shouldn't be `None`");
+        let range = self.monitored_loans.iter().map(|loan_id| loan_id.as_u64());
+        let mut monitored_loans = self.global_provider.get_loans_from_iter(range).await?;
+        monitored_loans.sort_by_key(|k| k.health_factor);
 
+        for updated_loan in monitored_loans {
             if let Status::Auction(_auction) = updated_loan.status {
                 warn!("transitioned to `Status::Auction` and was not handled by event listener");
                 continue;
@@ -119,7 +117,7 @@ impl BendDao {
                 );
                 info!("{msg}");
                 let _ = self.slack_bot.send_msg(&msg).await;
-                self.monitored_loans.remove(&loan_id);
+                self.monitored_loans.remove(&updated_loan.loan_id);
             }
 
             if !updated_loan.is_auctionable() {

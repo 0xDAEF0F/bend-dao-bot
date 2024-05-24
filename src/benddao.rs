@@ -116,8 +116,8 @@ impl BendDao {
                     updated_loan.health_factor()
                 );
                 info!("{msg}");
-                let _ = self.slack_bot.send_msg(&msg).await;
                 self.monitored_loans.remove(&updated_loan.loan_id);
+                continue;
             }
 
             if !updated_loan.is_auctionable() {

@@ -93,7 +93,7 @@ impl BendDao {
     }
 
     pub async fn handle_new_block(&mut self, block_number: Option<U64>) -> Result<()> {
-        for loan_id in self.monitored_loans.clone() {
+        for loan_id in self.monitored_loans.clone().into_iter().take(5) {
             let updated_loan = self
                 .global_provider
                 .get_updated_loan(loan_id)

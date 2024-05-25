@@ -52,7 +52,7 @@ impl Loan {
         self.health_factor < U256::exp10(18)
     }
 
-    /// `Status::Active && health_factor < 1.08e18`
+    /// `Status::Active && health_factor < 1.05e18`
     pub fn should_monitor(&self) -> bool {
         match self.status {
             Status::Active => self.health_factor < HEALTH_FACTOR_THRESHOLD_TO_MONITOR.into(),

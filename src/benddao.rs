@@ -16,20 +16,16 @@ use anyhow::{anyhow, bail, Result};
 use ethers::{
     providers::{Middleware, Provider, Ws},
     types::{U256, U64},
-    utils::format_ether,
 };
 use log::{error, info, warn};
 use std::{
-    collections::{BTreeSet, HashMap, HashSet},
+    collections::{BTreeSet, HashMap},
     sync::Arc,
 };
-use tokio::{
-    time::{Duration, Instant},
-    try_join,
-};
+use tokio::time::{Duration, Instant};
 
 pub struct BendDao {
-    monitored_loans: HashSet<U256>,
+    monitored_loans: Vec<U256>,
     pub our_pending_auctions: HashMap<U256, Instant>, // loan_id -> Instant
     global_provider: GlobalProvider,
     prices_client: PricesClient,
@@ -39,7 +35,7 @@ pub struct BendDao {
 impl BendDao {
     pub async fn try_new(config_vars: ConfigVars) -> Result<BendDao> {
         Ok(BendDao {
-            monitored_loans: HashSet::new(),
+            monitored_loans: Vec::new(),
             our_pending_auctions: HashMap::new(),
             global_provider: GlobalProvider::try_new(config_vars.clone()).await?,
             prices_client: PricesClient::new(config_vars.clone()),
@@ -66,17 +62,21 @@ impl BendDao {
             Status::RepaidDefaulted => {
                 // would be nice to update the data store, too but it's not that important.
                 // we can do that in the next synchronization of `build_all_loans`
-                self.monitored_loans.remove(&loan_id);
+                if let Some(pos) = self.monitored_loans.iter().position(|l| l == &loan_id) {
+                    self.monitored_loans.remove(pos);
+                }
                 return Ok(());
             }
             Status::Auction(auction) => {
-                let msg = format!("auction happening - {}", loan);
-                let _ = self.slack_bot.send_msg(&msg).await;
                 // remove from the system. if the loan is redeemed it will be added back
-                self.monitored_loans.remove(&loan_id);
+                if let Some(pos) = self.monitored_loans.iter().position(|l| l == &loan_id) {
+                    self.monitored_loans.remove(pos);
+                }
                 if !auction.is_ours(&self.global_provider.local_wallet) {
                     self.our_pending_auctions.remove(&loan_id);
                 }
+                let msg = format!("auction happening - {}", loan);
+                let _ = self.slack_bot.send_msg(&msg).await;
                 return Ok(());
             }
             Status::Active => {
@@ -89,20 +89,17 @@ impl BendDao {
             }
         }
 
-        match loan.should_monitor() {
-            true => self.monitored_loans.insert(loan_id),
-            false => self.monitored_loans.remove(&loan_id),
-        };
-
         Ok(())
     }
 
     pub async fn handle_new_block(&mut self, block_number: Option<U64>) -> Result<()> {
-        let range = self.monitored_loans.iter().map(|loan_id| loan_id.as_u64());
-        let mut monitored_loans = self.global_provider.get_loans_from_iter(range).await?;
-        monitored_loans.sort_by_key(|k| k.health_factor);
+        for loan_id in self.monitored_loans.clone() {
+            let updated_loan = self
+                .global_provider
+                .get_updated_loan(loan_id)
+                .await?
+                .unwrap();
 
-        for updated_loan in monitored_loans {
             if let Status::Auction(_auction) = updated_loan.status {
                 warn!("transitioned to `Status::Auction` and was not handled by event listener");
                 continue;
@@ -116,7 +113,12 @@ impl BendDao {
                     updated_loan.health_factor()
                 );
                 info!("{msg}");
-                self.monitored_loans.remove(&updated_loan.loan_id);
+                let pos = self
+                    .monitored_loans
+                    .iter()
+                    .position(|l| l == &updated_loan.loan_id)
+                    .unwrap();
+                self.monitored_loans.remove(pos);
                 continue;
             }
 
@@ -128,47 +130,40 @@ impl BendDao {
                 continue;
             }
 
-            let msg = format!(
-                "{:?} #{} HF below 1. Checking profitability",
-                updated_loan.nft_asset, updated_loan.nft_token_id
-            );
-            info!("{msg}");
-            let _ = self.slack_bot.send_msg(&msg).await;
-
             // IS PROFITABLE
-            let (best_bid_eth, total_debt_eth) = try_join!(
-                self.prices_client.get_best_nft_bid(updated_loan.nft_asset),
-                updated_loan.get_total_debt_eth(&self.prices_client)
-            )?;
+            // let (best_bid_eth, total_debt_eth) = try_join!(
+            //     self.prices_client.get_best_nft_bid(updated_loan.nft_asset),
+            //     updated_loan.get_total_debt_eth(&self.prices_client)
+            // )?;
 
-            let bidding_amount = calculate_bidding_amount(total_debt_eth);
+            // let bidding_amount = calculate_bidding_amount(total_debt_eth);
 
-            if best_bid_eth < bidding_amount {
-                let debt_human_readable = total_debt_eth.as_u128() as f64 / 1e18;
-                let best_bid_human_readable = best_bid_eth.as_u128() as f64 / 1e18;
-                info!(
-                    "{}",
-                    format!(
-                        ">> unprofitable | total debt: {:.2} > best bid: {:.2}",
-                        debt_human_readable, best_bid_human_readable
-                    )
-                );
-                continue;
-            }
+            // if best_bid_eth < bidding_amount {
+            //     let debt_human_readable = total_debt_eth.as_u128() as f64 / 1e18;
+            //     let best_bid_human_readable = best_bid_eth.as_u128() as f64 / 1e18;
+            //     info!(
+            //         "{}",
+            //         format!(
+            //             ">> unprofitable | total debt: {:.2} > best bid: {:.2}",
+            //             debt_human_readable, best_bid_human_readable
+            //         )
+            //     );
+            //     continue;
+            // }
 
-            let potential_profit = format_ether(best_bid_eth - bidding_amount);
-            let potential_profit = potential_profit
-                .parse::<f64>()
-                .expect("unable to convert ETH to f64");
-            info!(
-                "{}",
-                format!(">> potential profit: {:.4} ETH", potential_profit)
-            );
-            let slack_msg = format!(
-                "potential profit of ~ {:.4} ETH for {:?} #{}\nproceeding to start auction...",
-                potential_profit, updated_loan.nft_asset, updated_loan.nft_token_id
-            );
-            let _ = self.slack_bot.send_msg(&slack_msg).await;
+            // let potential_profit = format_ether(best_bid_eth - bidding_amount);
+            // let potential_profit = potential_profit
+            //     .parse::<f64>()
+            //     .expect("unable to convert ETH to f64");
+            // info!(
+            //     "{}",
+            //     format!(">> potential profit: {:.4} ETH", potential_profit)
+            // );
+            // let slack_msg = format!(
+            //     "potential profit of ~ {:.4} ETH for {:?} #{}\nproceeding to start auction...",
+            //     potential_profit, updated_loan.nft_asset, updated_loan.nft_token_id
+            // );
+            // let _ = self.slack_bot.send_msg(&slack_msg).await;
 
             // IS PROFITABLE [END]
 
@@ -296,6 +291,8 @@ impl BendDao {
         let all_loans = self.global_provider.get_loans_from_iter(iter).await?;
         let mut display_monitored_loans = String::from("");
 
+        let mut loans_to_monitor = vec![];
+
         for loan in all_loans {
             // collections not allowed to trade in production
             if !loan.nft_asset.is_allowed_in_production() {
@@ -316,10 +313,18 @@ impl BendDao {
             }
 
             if loan.should_monitor() {
-                self.monitored_loans.insert(loan.loan_id);
+                loans_to_monitor.push((loan.loan_id, loan.health_factor));
+                // self.monitored_loans.insert(loan.loan_id);
                 display_monitored_loans.push_str(&format!("{}\n", loan))
             }
         }
+
+        loans_to_monitor.sort_by(|a, b| a.1.cmp(&b.1));
+
+        self.monitored_loans = loans_to_monitor
+            .into_iter()
+            .map(|(loan_id, _hf)| loan_id)
+            .collect();
 
         save_repaid_defaulted_loans(&repaid_defaulted_loans_set).await?;
 

@@ -179,7 +179,7 @@ impl BendDao {
                 .global_provider
                 .start_auction(
                     &updated_loan,
-                    calculate_bidding_amount(updated_loan.total_debt),
+                    updated_loan.total_debt,
                 )
                 .await
             {

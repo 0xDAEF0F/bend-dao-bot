@@ -8,7 +8,6 @@ use crate::{
     constants::math::{ONE_DAY, ONE_MINUTE},
     global_provider::GlobalProvider,
     prices_client::PricesClient,
-    slack_bot::SlackBot,
     utils::{calculate_bidding_amount, get_repaid_defaulted_loans, save_repaid_defaulted_loans},
     ConfigVars,
 };
@@ -18,6 +17,7 @@ use ethers::{
     types::{U256, U64},
 };
 use log::{error, info, warn};
+use messenger_rs::slack_hook::SlackClient;
 use std::{
     collections::{BTreeSet, HashMap},
     sync::Arc,
@@ -29,7 +29,7 @@ pub struct BendDao {
     pub our_pending_auctions: HashMap<U256, Instant>, // loan_id -> Instant
     global_provider: GlobalProvider,
     prices_client: PricesClient,
-    pub slack_bot: SlackBot,
+    pub slack_bot: SlackClient,
 }
 
 impl BendDao {
@@ -39,7 +39,7 @@ impl BendDao {
             our_pending_auctions: HashMap::new(),
             global_provider: GlobalProvider::try_new(config_vars.clone()).await?,
             prices_client: PricesClient::new(config_vars.clone()),
-            slack_bot: SlackBot::new(config_vars),
+            slack_bot: SlackClient::new(config_vars.slack_url),
         })
     }
 
@@ -76,7 +76,7 @@ impl BendDao {
                     self.our_pending_auctions.remove(&loan_id);
                 }
                 let msg = format!("auction happening - {}", loan);
-                let _ = self.slack_bot.send_msg(&msg).await;
+                let _ = self.slack_bot.send_message(&msg).await;
                 return Ok(());
             }
             Status::Active => {
@@ -171,7 +171,7 @@ impl BendDao {
 
             if let (false, log) = balances.can_initiate_auction_with_log(&updated_loan) {
                 warn!("{log}");
-                let _ = self.slack_bot.send_msg(&log).await;
+                let _ = self.slack_bot.send_message(&log).await;
                 continue;
             }
 
@@ -189,7 +189,7 @@ impl BendDao {
                         updated_loan.nft_asset, updated_loan.nft_token_id
                     );
                     info!("{msg}");
-                    let _ = self.slack_bot.send_msg(&msg).await;
+                    let _ = self.slack_bot.send_message(&msg).await;
                     let cushion_time = ONE_MINUTE * 5;
                     let instant = Instant::now() + Duration::from_secs(ONE_DAY + cushion_time);
                     self.our_pending_auctions
@@ -200,7 +200,7 @@ impl BendDao {
                         "@here failed to start auction for {:?} #{}",
                         updated_loan.nft_asset, updated_loan.nft_token_id
                     );
-                    let _ = self.slack_bot.send_msg(&msg).await;
+                    let _ = self.slack_bot.send_message(&msg).await;
                     error!("{msg}");
                     error!("{e}");
                 }
@@ -350,7 +350,7 @@ impl BendDao {
             ));
         }
 
-        let _ = self.slack_bot.send_msg(&msg).await;
+        let _ = self.slack_bot.send_message(&msg).await;
         info!("{msg}");
 
         Ok(())

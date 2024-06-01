@@ -18,20 +18,22 @@ use ethers::{
     signers::{coins_bip39::English, LocalWallet, MnemonicBuilder, Signer, Wallet},
     types::{Address, U256},
 };
+use ethers_flashbots::FlashbotsMiddleware;
 use futures::future::join_all;
 use log::{debug, info};
+use url::Url;
 use std::sync::Arc;
 use tokio::{task::JoinHandle, try_join};
 
 pub struct GlobalProvider {
     pub local_wallet: LocalWallet,
     pub provider: Arc<Provider<Ws>>,
-    pub signer_provider: Arc<SignerMiddleware<Arc<Provider<Ws>>, Wallet<SigningKey>>>,
+    pub signer_provider: Arc<SignerMiddleware<FlashbotsMiddleware<Arc<Provider<Ws>>, Wallet<SigningKey>>, Wallet<SigningKey>>>,
     pub lend_pool: LendPool<Provider<Ws>>,
     pub lend_pool_loan: LendPoolLoan<Provider<Ws>>,
-    pub lend_pool_with_signer: LendPool<SignerMiddleware<Arc<Provider<Ws>>, Wallet<SigningKey>>>,
-    pub weth: Weth<SignerMiddleware<Arc<Provider<Ws>>, Wallet<SigningKey>>>,
-    pub usdt: Erc20<SignerMiddleware<Arc<Provider<Ws>>, Wallet<SigningKey>>>,
+    pub lend_pool_with_signer: LendPool<SignerMiddleware<FlashbotsMiddleware<Arc<Provider<Ws>>, Wallet<SigningKey>>, Wallet<SigningKey>>>,
+    pub weth: Weth<SignerMiddleware<FlashbotsMiddleware<Arc<Provider<Ws>>, Wallet<SigningKey>>, Wallet<SigningKey>>>,
+    pub usdt: Erc20<SignerMiddleware<FlashbotsMiddleware<Arc<Provider<Ws>>, Wallet<SigningKey>>, Wallet<SigningKey>>>,
 }
 
 impl GlobalProvider {
@@ -49,7 +51,14 @@ impl GlobalProvider {
             .phrase(config_vars.mnemonic.as_str())
             .build()?;
 
-        let signer_provider = SignerMiddleware::new(provider.clone(), local_wallet.clone());
+        let signer_provider = SignerMiddleware::new(
+            FlashbotsMiddleware::new(
+                provider.clone(),
+                Url::parse("https://relay.flashbots.net")?,
+                // TODO
+                // replace with a specific bundle signer
+                local_wallet.clone(),
+            ), local_wallet.clone());
         let signer_provider = Arc::new(signer_provider);
 
         let lend_pool = LendPool::new(Address::from(LEND_POOL), provider.clone());

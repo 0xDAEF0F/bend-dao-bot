@@ -271,6 +271,7 @@ impl BendDao {
         Ok(())
     }
 
+    /// initialization function
     pub async fn build_all_loans(&mut self) -> Result<()> {
         let mut repaid_defaulted_loans_set = get_repaid_defaulted_loans()
             .await

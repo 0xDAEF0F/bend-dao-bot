@@ -18,19 +18,36 @@ use ethers::{
     signers::{coins_bip39::English, LocalWallet, MnemonicBuilder, Signer, Wallet},
     types::{Address, U256},
 };
-use ethers_flashbots::FlashbotsMiddleware;
+use ethers_flashbots::{BroadcasterMiddleware, FlashbotsMiddleware};
 use futures::future::join_all;
 use log::{debug, info};
 use std::sync::Arc;
 use tokio::{task::JoinHandle, try_join};
 use url::Url;
 
+static BUILDER_URLS: &[&str] = &[
+    "https://builder0x69.io",
+    "https://rpc.beaverbuild.org",
+    "https://relay.flashbots.net",
+    "https://rsync-builder.xyz",
+    "https://rpc.titanbuilder.xyz",
+    "https://api.blocknative.com/v1/auction",
+    "https://mev.api.blxrbdn.com",
+    "https://eth-builder.com",
+    "https://builder.gmbit.co/rpc",
+    "https://buildai.net",
+    "https://rpc.payload.de",
+    "https://rpc.lightspeedbuilder.info",
+    "https://rpc.nfactorial.xyz",
+    "https://rpc.lokibuilder.xyz",
+];
+
 pub struct GlobalProvider {
     pub local_wallet: LocalWallet,
     pub provider: Arc<Provider<Ws>>,
     pub signer_provider: Arc<
         SignerMiddleware<
-            FlashbotsMiddleware<Arc<Provider<Ws>>, Wallet<SigningKey>>,
+            BroadcasterMiddleware<Arc<Provider<Ws>>, Wallet<SigningKey>>,
             Wallet<SigningKey>,
         >,
     >,
@@ -38,19 +55,19 @@ pub struct GlobalProvider {
     pub lend_pool_loan: LendPoolLoan<Provider<Ws>>,
     pub lend_pool_with_signer: LendPool<
         SignerMiddleware<
-            FlashbotsMiddleware<Arc<Provider<Ws>>, Wallet<SigningKey>>,
+            BroadcasterMiddleware<Arc<Provider<Ws>>, Wallet<SigningKey>>,
             Wallet<SigningKey>,
         >,
     >,
     pub weth: Weth<
         SignerMiddleware<
-            FlashbotsMiddleware<Arc<Provider<Ws>>, Wallet<SigningKey>>,
+            BroadcasterMiddleware<Arc<Provider<Ws>>, Wallet<SigningKey>>,
             Wallet<SigningKey>,
         >,
     >,
     pub usdt: Erc20<
         SignerMiddleware<
-            FlashbotsMiddleware<Arc<Provider<Ws>>, Wallet<SigningKey>>,
+            BroadcasterMiddleware<Arc<Provider<Ws>>, Wallet<SigningKey>>,
             Wallet<SigningKey>,
         >,
     >,
@@ -72,8 +89,12 @@ impl GlobalProvider {
             .build()?;
 
         let signer_provider = SignerMiddleware::new(
-            FlashbotsMiddleware::new(
+            BroadcasterMiddleware::new(
                 provider.clone(),
+                BUILDER_URLS
+                    .iter()
+                    .map(|url| Url::parse(url).unwrap())
+                    .collect(),
                 Url::parse("https://relay.flashbots.net")?,
                 // TODO
                 // replace with a specific bundle signer

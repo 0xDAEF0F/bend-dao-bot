@@ -18,7 +18,7 @@ use ethers::{
     signers::{coins_bip39::English, LocalWallet, MnemonicBuilder, Signer, Wallet},
     types::{Address, U256},
 };
-use ethers_flashbots::{BroadcasterMiddleware, FlashbotsMiddleware};
+use ethers_flashbots::BroadcasterMiddleware;
 use futures::future::join_all;
 use log::{debug, info};
 use std::sync::Arc;

@@ -21,19 +21,39 @@ use ethers::{
 use ethers_flashbots::FlashbotsMiddleware;
 use futures::future::join_all;
 use log::{debug, info};
-use url::Url;
 use std::sync::Arc;
 use tokio::{task::JoinHandle, try_join};
+use url::Url;
 
 pub struct GlobalProvider {
     pub local_wallet: LocalWallet,
     pub provider: Arc<Provider<Ws>>,
-    pub signer_provider: Arc<SignerMiddleware<FlashbotsMiddleware<Arc<Provider<Ws>>, Wallet<SigningKey>>, Wallet<SigningKey>>>,
+    pub signer_provider: Arc<
+        SignerMiddleware<
+            FlashbotsMiddleware<Arc<Provider<Ws>>, Wallet<SigningKey>>,
+            Wallet<SigningKey>,
+        >,
+    >,
     pub lend_pool: LendPool<Provider<Ws>>,
     pub lend_pool_loan: LendPoolLoan<Provider<Ws>>,
-    pub lend_pool_with_signer: LendPool<SignerMiddleware<FlashbotsMiddleware<Arc<Provider<Ws>>, Wallet<SigningKey>>, Wallet<SigningKey>>>,
-    pub weth: Weth<SignerMiddleware<FlashbotsMiddleware<Arc<Provider<Ws>>, Wallet<SigningKey>>, Wallet<SigningKey>>>,
-    pub usdt: Erc20<SignerMiddleware<FlashbotsMiddleware<Arc<Provider<Ws>>, Wallet<SigningKey>>, Wallet<SigningKey>>>,
+    pub lend_pool_with_signer: LendPool<
+        SignerMiddleware<
+            FlashbotsMiddleware<Arc<Provider<Ws>>, Wallet<SigningKey>>,
+            Wallet<SigningKey>,
+        >,
+    >,
+    pub weth: Weth<
+        SignerMiddleware<
+            FlashbotsMiddleware<Arc<Provider<Ws>>, Wallet<SigningKey>>,
+            Wallet<SigningKey>,
+        >,
+    >,
+    pub usdt: Erc20<
+        SignerMiddleware<
+            FlashbotsMiddleware<Arc<Provider<Ws>>, Wallet<SigningKey>>,
+            Wallet<SigningKey>,
+        >,
+    >,
 }
 
 impl GlobalProvider {
@@ -58,7 +78,9 @@ impl GlobalProvider {
                 // TODO
                 // replace with a specific bundle signer
                 local_wallet.clone(),
-            ), local_wallet.clone());
+            ),
+            local_wallet.clone(),
+        );
         let signer_provider = Arc::new(signer_provider);
 
         let lend_pool = LendPool::new(Address::from(LEND_POOL), provider.clone());
@@ -175,14 +197,20 @@ impl GlobalProvider {
     pub async fn start_auction(&self, loan: &Loan, bid_price: U256) -> Result<()> {
         let nft_asset = loan.nft_asset.to_string().parse::<Address>()?;
 
-        self.lend_pool_with_signer
+        let tx = self
+            .lend_pool_with_signer
             .auction(
                 nft_asset,
                 loan.nft_token_id,
                 bid_price,
                 self.local_wallet.address(),
             )
-            .send()
+            .tx;
+
+        let reciept = self
+            .signer_provider
+            // will send to next blocknumber
+            .send_transaction(tx, None)
             .await?
             .log_msg(format!(
                 "starting auction for nft collection: {} for {} weth",
@@ -190,21 +218,44 @@ impl GlobalProvider {
             ))
             .await?;
 
+        if let Some(reciept) = reciept {
+            info!(
+                "auction succesfully started view here: https://etherscan.io/tx/{:?}",
+                reciept.transaction_hash
+            );
+        } else {
+            bail!("auction failed")
+        }
+
         Ok(())
     }
 
     pub async fn liquidate_loan(&self, loan: &Loan) -> Result<()> {
         let nft_asset = loan.nft_asset.to_string().parse::<Address>()?;
 
-        self.lend_pool_with_signer
+        let tx = self
+            .lend_pool_with_signer
             .liquidate(nft_asset, loan.nft_token_id, U256::zero())
-            .send()
+            .tx;
+
+        let reciept = self
+            .signer_provider
+            .send_transaction(tx, None)
             .await?
             .log_msg(format!(
                 "executing liquidation for {} r##{}",
                 loan.nft_asset, loan.nft_token_id
             ))
             .await?;
+
+        if let Some(reciept) = reciept {
+            info!(
+                "loan successfully liquidated here: https://etherscan.io/tx/{:?}",
+                reciept.transaction_hash
+            );
+        } else {
+            bail!("auction failed")
+        }
 
         Ok(())
     }

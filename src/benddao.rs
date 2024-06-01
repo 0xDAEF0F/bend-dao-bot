@@ -177,10 +177,7 @@ impl BendDao {
 
             match self
                 .global_provider
-                .start_auction(
-                    &updated_loan,
-                    updated_loan.total_debt,
-                )
+                .start_auction(&updated_loan, updated_loan.total_debt)
                 .await
             {
                 Ok(()) => {

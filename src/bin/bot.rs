@@ -165,13 +165,23 @@ fn task_four(bend_dao_state: Arc<Mutex<BendDao>>) -> JoinHandle<Result<()>> {
                         Ok(()) => {
                             let log = "loan was successfully liquidated".to_string();
                             warn!("{log}");
-                            let _ = bend_dao_state.lock().await.slack_bot.send_message(&log).await;
+                            let _ = bend_dao_state
+                                .lock()
+                                .await
+                                .slack_bot
+                                .send_message(&log)
+                                .await;
                         }
                         Err(e) => {
                             let log = format!("could not liquidate loan: {}", e);
                             error!("{log}");
                             let mut lock = bend_dao_state.lock().await;
-                            let _ = lock.slack_bot.send_message(&log).await;
+                            lock.slack_bot
+                                .send_message(&log)
+                                .await
+                                .unwrap_or_else(|err| {
+                                    error!("could not send slack message: {}", err)
+                                });
                             // do not try to liquidate again
                             lock.our_pending_auctions.remove(&loan_id);
                         }

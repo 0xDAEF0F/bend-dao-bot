@@ -329,7 +329,10 @@ impl BendDao {
         save_repaid_defaulted_loans(&repaid_defaulted_loans_set).await?;
 
         let block_number = self.global_provider.provider.get_block_number().await?;
-        self.notify_and_log_monitored_loans(block_number).await?;
+        // send slack message and log every 300 blocks the monitored loans
+        if block_number % U64::from(300) == U64::zero() {
+            self.notify_and_log_monitored_loans(block_number).await?;
+        }
 
         Ok(())
     }

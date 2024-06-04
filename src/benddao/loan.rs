@@ -1,6 +1,6 @@
 use super::status::Status;
 use crate::constants::addresses::{
-    BAYC, CLONEX, CRYPTOPUNKS, MAYC, PUDGY_PENGUINS, STBAYC, USDT, WETH,
+    AZUKI, BAYC, CLONEX, CRYPTOPUNKS, MAYC, PUDGY_PENGUINS, STBAYC, USDT, WETH,
 };
 use crate::constants::bend_dao::HEALTH_FACTOR_THRESHOLD_TO_MONITOR;
 use crate::prices_client::PricesClient;
@@ -96,6 +96,7 @@ impl Display for ReserveAsset {
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum NftAsset {
+    Azuki,
     Bayc,
     CryptoPunks,
     Mayc,
@@ -113,6 +114,7 @@ impl NftAsset {
             NftAsset::CloneX => false,
             NftAsset::PudgyPenguins => true,
             NftAsset::Mayc => false,
+            NftAsset::Azuki => true,
         }
     }
 }
@@ -123,6 +125,7 @@ impl TryFrom<Address> for NftAsset {
     fn try_from(value: Address) -> Result<NftAsset, Self::Error> {
         let addr = format!("{:?}", value);
         match addr.as_str() {
+            AZUKI => Ok(Self::Azuki),
             BAYC => Ok(Self::Bayc),
             CRYPTOPUNKS => Ok(Self::CryptoPunks),
             MAYC => Ok(Self::Mayc),
@@ -146,6 +149,7 @@ impl TryFrom<NftAsset> for Address {
 impl Display for NftAsset {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
+            NftAsset::Azuki => write!(f, "{AZUKI}"),
             NftAsset::Bayc => write!(f, "{BAYC}"),
             NftAsset::CryptoPunks => write!(f, "{CRYPTOPUNKS}"),
             NftAsset::Mayc => write!(f, "{MAYC}"),

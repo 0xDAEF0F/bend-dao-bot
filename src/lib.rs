@@ -5,7 +5,6 @@ pub mod global_provider;
 pub mod math;
 pub mod prices_client;
 pub mod reservoir;
-pub mod slack_bot;
 pub mod utils;
 
 use anyhow::Result;

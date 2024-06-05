@@ -12,7 +12,7 @@ use crate::{
 };
 use anyhow::{bail, Result};
 use ethers::{
-    core::k256::ecdsa::SigningKey,
+    core::{k256::ecdsa::SigningKey, rand::{thread_rng, Rng}},
     middleware::SignerMiddleware,
     providers::{Middleware, Provider, Ws},
     signers::{coins_bip39::English, LocalWallet, MnemonicBuilder, Signer, Wallet},
@@ -98,7 +98,7 @@ impl GlobalProvider {
                 Url::parse("https://relay.flashbots.net")?,
                 // TODO
                 // replace with a specific bundle signer
-                local_wallet.clone(),
+                LocalWallet::new(&mut thread_rng()),
             ),
             local_wallet.clone(),
         );

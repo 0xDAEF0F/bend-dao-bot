@@ -12,7 +12,7 @@ use crate::{
 };
 use anyhow::{bail, Result};
 use ethers::{
-    core::{k256::ecdsa::SigningKey, rand::{thread_rng, Rng}},
+    core::{k256::ecdsa::SigningKey, rand::thread_rng},
     middleware::SignerMiddleware,
     providers::{Middleware, Provider, Ws},
     signers::{coins_bip39::English, LocalWallet, MnemonicBuilder, Signer, Wallet},
@@ -108,7 +108,7 @@ impl GlobalProvider {
         let lend_pool_with_signer =
             LendPool::new(Address::from(LEND_POOL), signer_provider.clone());
 
-        let address = LEND_POOL_LOAN.parse::<Address>()?;
+        let address = Address::from(LEND_POOL_LOAN);
         let lend_pool_loan = LendPoolLoan::new(address, provider.clone());
 
         let address = WETH.parse::<Address>()?;

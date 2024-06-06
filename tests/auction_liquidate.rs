@@ -50,7 +50,7 @@ async fn test_auction_and_liquidate() -> Result<()> {
     let lend_pool: Address = LEND_POOL.into();
     let lend_pool = LendPool::new(lend_pool, provider.clone());
 
-    let lend_pool_loan = LEND_POOL_LOAN.parse::<Address>()?;
+    let lend_pool_loan = Address::from(LEND_POOL_LOAN);
     let lend_pool_loan = LendPoolLoan::new(lend_pool_loan, provider.clone());
 
     let loan = get_loan_data(5138.into(), lend_pool.clone(), lend_pool_loan.clone())

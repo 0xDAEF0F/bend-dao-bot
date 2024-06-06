@@ -24,6 +24,7 @@ use std::{
 };
 use tokio::time::{Duration, Instant};
 
+#[allow(dead_code)]
 pub struct BendDao {
     monitored_loans: Vec<U256>,
     pub our_pending_auctions: HashMap<U256, Instant>, // loan_id -> Instant

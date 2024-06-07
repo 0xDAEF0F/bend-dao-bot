@@ -25,3 +25,4 @@ mev-share-sse = "0.3.0"
 alloy-primitives = "0.7.5"
 hex-literal = "0.4.1"
 revm = { version = "9.0.0", features = ["ethersdb"] }
+hex = "0.4.3"

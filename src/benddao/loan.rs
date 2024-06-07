@@ -2,11 +2,12 @@ use super::status::Status;
 use crate::constants::addresses::{
     AZUKI, BAYC, CLONEX, CRYPTOPUNKS, MAYC, PUDGY_PENGUINS, STBAYC, USDT, WETH,
 };
-use crate::constants::bend_dao::HEALTH_FACTOR_THRESHOLD_TO_MONITOR;
+use crate::constants::bend_dao::{HEALTH_FACTOR_THRESHOLD_TO_MONITOR, TWAP_PRICE_MAP_SLOT};
 use crate::prices_client::PricesClient;
 use anyhow::{bail, Result};
 use core::fmt;
-use ethers::types::{Address, U256};
+use ethers::types::{Address, H256, U256};
+use ethers::utils::keccak256;
 use std::fmt::{Debug, Display, Formatter};
 
 #[derive(Debug, Clone)]
@@ -75,21 +76,14 @@ pub enum ReserveAsset {
 impl TryFrom<Address> for ReserveAsset {
     type Error = anyhow::Error;
 
-    fn try_from(value: Address) -> Result<Self, Self::Error> {
-        let addr = format!("{:?}", value);
-        match addr.as_str() {
+    fn try_from(reserve_asset: Address) -> Result<Self, Self::Error> {
+        match reserve_asset.0 {
             WETH => Ok(Self::Weth),
             USDT => Ok(Self::Usdt),
-            _ => bail!("could not convert from Address: {} to ReserveAsset", value),
-        }
-    }
-}
-
-impl Display for ReserveAsset {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            ReserveAsset::Usdt => write!(f, "{USDT}"),
-            ReserveAsset::Weth => write!(f, "{WETH}"),
+            _ => bail!(
+                "could not convert from Address: {} to ReserveAsset",
+                reserve_asset
+            ),
         }
     }
 }
@@ -117,14 +111,21 @@ impl NftAsset {
             NftAsset::Azuki => true,
         }
     }
+
+    pub fn get_storage_slot(&self) -> H256 {
+        let nft_address: H256 = Address::try_from(*self).unwrap().into();
+
+        let slot = keccak256([nft_address.into(), TWAP_PRICE_MAP_SLOT].concat());
+
+        H256::from_slice(&slot[..])
+    }
 }
 
 impl TryFrom<Address> for NftAsset {
     type Error = anyhow::Error;
 
     fn try_from(value: Address) -> Result<NftAsset, Self::Error> {
-        let addr = format!("{:?}", value);
-        match addr.as_str() {
+        match value.0 {
             AZUKI => Ok(Self::Azuki),
             BAYC => Ok(Self::Bayc),
             CRYPTOPUNKS => Ok(Self::CryptoPunks),
@@ -137,25 +138,16 @@ impl TryFrom<Address> for NftAsset {
     }
 }
 
-impl TryFrom<NftAsset> for Address {
-    type Error = anyhow::Error;
-
-    fn try_from(value: NftAsset) -> Result<Address, Self::Error> {
-        let addr = format!("{:?}", value);
-        Ok(addr.parse()?)
-    }
-}
-
-impl Display for NftAsset {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            NftAsset::Azuki => write!(f, "{AZUKI}"),
-            NftAsset::Bayc => write!(f, "{BAYC}"),
-            NftAsset::CryptoPunks => write!(f, "{CRYPTOPUNKS}"),
-            NftAsset::Mayc => write!(f, "{MAYC}"),
-            NftAsset::CloneX => write!(f, "{CLONEX}"),
-            NftAsset::PudgyPenguins => write!(f, "{PUDGY_PENGUINS}"),
-            NftAsset::StBayc => write!(f, "{STBAYC}"),
+impl From<NftAsset> for Address {
+    fn from(value: NftAsset) -> Address {
+        match value {
+            NftAsset::Azuki => AZUKI.into(),
+            NftAsset::Bayc => BAYC.into(),
+            NftAsset::CryptoPunks => CRYPTOPUNKS.into(),
+            NftAsset::Mayc => MAYC.into(),
+            NftAsset::CloneX => CLONEX.into(),
+            NftAsset::PudgyPenguins => PUDGY_PENGUINS.into(),
+            NftAsset::StBayc => STBAYC.into(),
         }
     }
 }

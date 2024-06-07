@@ -111,10 +111,10 @@ impl GlobalProvider {
         let address = Address::from(LEND_POOL_LOAN);
         let lend_pool_loan = LendPoolLoan::new(address, provider.clone());
 
-        let address = WETH.parse::<Address>()?;
+        let address = Address::from(WETH);
         let weth = Weth::new(address, signer_provider.clone());
 
-        let address = USDT.parse::<Address>()?;
+        let address = Address::from(USDT);
         let usdt = Erc20::new(address, signer_provider.clone());
 
         Ok(GlobalProvider {
@@ -216,7 +216,7 @@ impl GlobalProvider {
     }
 
     pub async fn start_auction(&self, loan: &Loan, bid_price: U256) -> Result<()> {
-        let nft_asset = loan.nft_asset.to_string().parse::<Address>()?;
+        let nft_asset: Address = loan.nft_asset.into();
 
         let tx = self
             .lend_pool_with_signer
@@ -234,7 +234,7 @@ impl GlobalProvider {
             .send_transaction(tx, None)
             .await?
             .log_msg(format!(
-                "starting auction for nft collection: {} for {} weth",
+                "starting auction for nft collection: {:?} for {} weth",
                 loan.nft_asset, bid_price
             ))
             .await?;
@@ -252,11 +252,9 @@ impl GlobalProvider {
     }
 
     pub async fn liquidate_loan(&self, loan: &Loan) -> Result<()> {
-        let nft_asset = loan.nft_asset.to_string().parse::<Address>()?;
-
         let tx = self
             .lend_pool_with_signer
-            .liquidate(nft_asset, loan.nft_token_id, U256::zero())
+            .liquidate(loan.nft_asset.into(), loan.nft_token_id, U256::zero())
             .tx;
 
         let reciept = self
@@ -264,7 +262,7 @@ impl GlobalProvider {
             .send_transaction(tx, None)
             .await?
             .log_msg(format!(
-                "executing liquidation for {} r##{}",
+                "executing liquidation for {:?} r##{}",
                 loan.nft_asset, loan.nft_token_id
             ))
             .await?;

@@ -36,7 +36,8 @@ async fn test_auction_and_liquidate() -> Result<()> {
     let client = SignerMiddleware::new(provider.clone(), wallet.with_chain_id(anvil.chain_id()));
     let client = Arc::new(client);
 
-    let weth = Weth::new(WETH.parse::<Address>()?, client.clone());
+    let weth = Address::from(WETH);
+    let weth = Weth::new(weth, client.clone());
 
     weth.deposit().value(U256::exp10(18)).send().await?.await?;
     weth.approve(LEND_POOL.into(), U256::MAX)
@@ -59,10 +60,9 @@ async fn test_auction_and_liquidate() -> Result<()> {
 
     let lend_pool = LendPool::new(Address::from(LEND_POOL), client.clone());
 
-    let nft_asset = format!("{}", loan.nft_asset).parse::<Address>()?;
     let _receipt = lend_pool
         .auction(
-            nft_asset,
+            Address::from(loan.nft_asset),
             loan.nft_token_id,
             U256::exp10(18),
             wallet_address,
@@ -78,13 +78,17 @@ async fn test_auction_and_liquidate() -> Result<()> {
     increase_time(provider.clone(), 86_400).await?;
 
     let _receipt = lend_pool
-        .liquidate(nft_asset, loan.nft_token_id, U256::zero())
+        .liquidate(
+            Address::from(loan.nft_asset),
+            loan.nft_token_id,
+            U256::zero(),
+        )
         .send()
         .await?
         .log()
         .await?;
 
-    let clonex: Address = CLONEX.parse()?;
+    let clonex = Address::from(CLONEX);
     let clonex = Erc721::new(clonex, provider.clone());
 
     let owner: Address = clonex.owner_of(U256::from(18241)).await?;

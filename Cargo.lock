@@ -443,6 +443,7 @@ dependencies = [
  "ethers-flashbots",
  "eyre",
  "futures",
+ "hex",
  "hex-literal",
  "log",
  "messenger-rs",

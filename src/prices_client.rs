@@ -2,7 +2,7 @@ use crate::reservoir::floor_response::CollectionBidsResponse;
 use crate::ConfigVars;
 use crate::{benddao::loan::NftAsset, coinmarketcap::price_response::PriceResponse};
 use anyhow::Result;
-use ethers::types::U256;
+use ethers::types::{Address, U256};
 use reqwest::{header::HeaderValue, Client};
 use url::Url;
 
@@ -31,7 +31,7 @@ impl PricesClient {
             nft_asset => nft_asset,
         };
         let mut url: Url = RESERVOIR_BASE_URL.parse()?;
-        let path = format!("collections/{}/bids/v1", nft_asset);
+        let path = format!("collections/{:?}/bids/v1", Address::from(nft_asset));
         url.set_path(&path);
         url.set_query(Some("type=collection")); // collection wide bids
 
@@ -103,10 +103,13 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_best_nft_bid() -> Result<()> {
+        dotenv::dotenv().ok();
         let config_vars = ConfigVars::try_new()?;
         let client = PricesClient::new(config_vars);
 
-        let price = client.get_best_nft_bid(NftAsset::Bayc).await.unwrap();
+        let price = client.get_best_nft_bid(NftAsset::Azuki).await.unwrap();
+
+        println!("{}", price);
 
         assert!(price > U256::zero());
 

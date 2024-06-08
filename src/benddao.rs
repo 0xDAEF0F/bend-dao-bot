@@ -5,11 +5,7 @@ pub mod status;
 
 use self::{auction::Auction, status::Status};
 use crate::{
-    constants::math::{ONE_DAY, ONE_MINUTE},
-    global_provider::GlobalProvider,
-    prices_client::PricesClient,
-    utils::{calculate_bidding_amount, get_repaid_defaulted_loans, save_repaid_defaulted_loans},
-    ConfigVars,
+    constants::math::{ONE_DAY, ONE_MINUTE}, global_provider::GlobalProvider, prices_client::PricesClient, simulator::Simulator, utils::{calculate_bidding_amount, get_repaid_defaulted_loans, save_repaid_defaulted_loans}, ConfigVars
 };
 use anyhow::{anyhow, bail, Result};
 use ethers::{
@@ -31,6 +27,7 @@ pub struct BendDao {
     global_provider: GlobalProvider,
     prices_client: PricesClient,
     pub slack_bot: SlackClient,
+    // db: CacheDB<Em>
 }
 
 impl BendDao {
@@ -40,7 +37,7 @@ impl BendDao {
             our_pending_auctions: HashMap::new(),
             global_provider: GlobalProvider::try_new(config_vars.clone()).await?,
             prices_client: PricesClient::new(config_vars.clone()),
-            slack_bot: SlackClient::new(config_vars.slack_url),
+            slack_bot: SlackClient::new(config_vars.clone().slack_url),
         })
     }
 
@@ -355,6 +352,10 @@ impl BendDao {
         let _ = self.slack_bot.send_message(&msg).await;
         info!("{msg}");
 
+        Ok(())
+    }
+
+    pub async fn create_db_cache() -> Result<()> {
         Ok(())
     }
 }

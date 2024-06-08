@@ -1,8 +1,13 @@
 use hex_literal::hex;
 
+// protocol
+pub const ORACLE_ADDRESS: [u8; 20] = hex!("7C2A19e54e48718f6C60908a9Cff3396E4Ea1eBA");
+pub const ORACLE_CONTROLLER_EOA: [u8; 20] = hex!("25259003CD9de81e9462537622becb32fb6bFc24");
+// tokens
 pub const USDT: [u8; 20] = hex!("dac17f958d2ee523a2206206994597c13d831ec7");
 pub const WETH: [u8; 20] = hex!("c02aaa39b223fe8d0a0e5c4f27ead9083c756cc2");
 
+// nft collections
 pub const AZUKI: [u8; 20] = hex!("ed5af388653567af2f388e6224dc7c4b3241c544");
 pub const BAYC: [u8; 20] = hex!("bc4ca0eda7647a8ab7c2061c2e118a18a936f13d");
 pub const STBAYC: [u8; 20] = hex!("08f5f0126af89b4fd5499e942891d904a027624b");

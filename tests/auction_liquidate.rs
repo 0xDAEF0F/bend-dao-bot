@@ -1,14 +1,8 @@
 #![cfg(test)]
 
 use anyhow::Result;
-use bend_dao_collector::{
-    constants::{
-        addresses::{CLONEX, WETH},
-        bend_dao::{LEND_POOL, LEND_POOL_LOAN},
-    },
-    utils::get_loan_data,
-    Erc721, LendPool, LendPoolLoan, Weth,
-};
+use bend_dao_collector::constants::*;
+use bend_dao_collector::{utils::get_loan_data, Erc721, LendPool, LendPoolLoan, Weth};
 use ethers::{
     middleware::SignerMiddleware,
     providers::{Http, Provider},

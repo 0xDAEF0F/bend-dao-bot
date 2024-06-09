@@ -1,3 +1,7 @@
-pub mod addresses;
-pub mod bend_dao;
-pub mod math;
+mod addresses;
+mod bend_dao;
+mod math;
+
+pub use addresses::*;
+pub use bend_dao::*;
+pub use math::*;

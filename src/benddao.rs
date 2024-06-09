@@ -5,7 +5,12 @@ pub mod status;
 
 use self::{auction::Auction, status::Status};
 use crate::{
-    constants::math::{ONE_DAY, ONE_MINUTE}, global_provider::GlobalProvider, prices_client::PricesClient, simulator::Simulator, utils::{calculate_bidding_amount, get_repaid_defaulted_loans, save_repaid_defaulted_loans}, ConfigVars
+    constants::*,
+    global_provider::GlobalProvider,
+    prices_client::PricesClient,
+    simulator::Simulator,
+    utils::{calculate_bidding_amount, get_repaid_defaulted_loans, save_repaid_defaulted_loans},
+    Config,
 };
 use anyhow::{anyhow, bail, Result};
 use ethers::{
@@ -27,11 +32,10 @@ pub struct BendDao {
     global_provider: GlobalProvider,
     prices_client: PricesClient,
     pub slack_bot: SlackClient,
-    // db: CacheDB<Em>
 }
 
 impl BendDao {
-    pub async fn try_new(config_vars: ConfigVars) -> Result<BendDao> {
+    pub async fn try_new(config_vars: Config) -> Result<BendDao> {
         Ok(BendDao {
             monitored_loans: Vec::new(),
             our_pending_auctions: HashMap::new(),

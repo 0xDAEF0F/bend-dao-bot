@@ -1,20 +1,24 @@
-use std::str::FromStr;
+use crate::Config;
+use anyhow::Result;
 use ethers::types::{Bytes, Transaction, H160, U256};
 use reqwest::Client;
-use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use crate::ConfigVars;
-
+use std::str::FromStr;
 
 pub struct Simulator {
     url: String,
-    client: Client
-    // pub db: CacheDB<EthersDB<Provider<Ws>>>,
+    client: Client, // pub db: CacheDB<EthersDB<Provider<Ws>>>,
 }
 
 impl Simulator {
-    pub fn new(cfg: ConfigVars) -> Self {
-        Self { url: format!("https://eth-mainnet.g.alchemy.com/v2/{}", cfg.alchemy_api_key), client: Client::new() }
+    pub fn new(cfg: Config) -> Self {
+        Self {
+            url: format!(
+                "https://eth-mainnet.g.alchemy.com/v2/{}",
+                cfg.alchemy_api_key
+            ),
+            client: Client::new(),
+        }
     }
 
     /// Simulates a transaction and returns the updadated twaps
@@ -30,28 +34,32 @@ impl Simulator {
                 value: tx.value,
             }],
         };
-    
-        let res = self.client.post(&self.url)
-        .json(&req)
-        .send()
-        .await?
-        .json::<Res>()
-        .await?;
+
+        let res = self
+            .client
+            .post(&self.url)
+            .json(&req)
+            .send()
+            .await?
+            .json::<Res>()
+            .await?;
 
         let mut prices = Vec::new();
 
         for log in res.result.logs {
-            if &log.topics[0].to_string() == "0x58bdf68b6e757afad014720959e6c9ecd94de1cc24b964ebf48b08b50366b321" {
-                prices.push((H160::from_str(&log.topics[1]).unwrap(), U256::from_str_radix(&log.data[..66], 16)?));
+            if &log.topics[0].to_string()
+                == "0x58bdf68b6e757afad014720959e6c9ecd94de1cc24b964ebf48b08b50366b321"
+            {
+                prices.push((
+                    H160::from_str(&log.topics[1]).unwrap(),
+                    U256::from_str_radix(&log.data[..66], 16)?,
+                ));
             }
-
         }
 
         Ok(prices)
-    } 
-
+    }
 }
-
 
 #[derive(Serialize)]
 struct Req {
@@ -66,24 +74,24 @@ struct TxObject {
     from: H160,
     to: H160,
     data: Bytes,
-    value: U256
+    value: U256,
 }
 
 #[derive(Deserialize)]
 struct Res {
-    result: Results
+    result: Results,
 }
 
 #[derive(Deserialize)]
 struct Results {
-    logs: Vec<Log>
+    logs: Vec<Log>,
 }
 
 #[derive(Deserialize)]
 struct Log {
     address: H160,
     topics: Vec<String>,
-    data: String
+    data: String,
 }
 
 /* impl Simulator {

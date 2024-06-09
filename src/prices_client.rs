@@ -1,5 +1,5 @@
 use crate::reservoir::floor_response::CollectionBidsResponse;
-use crate::ConfigVars;
+use crate::Config;
 use crate::{benddao::loan::NftAsset, coinmarketcap::price_response::PriceResponse};
 use anyhow::Result;
 use ethers::types::{Address, U256};
@@ -16,7 +16,7 @@ pub struct PricesClient {
 }
 
 impl PricesClient {
-    pub fn new(config: ConfigVars) -> PricesClient {
+    pub fn new(config: Config) -> PricesClient {
         PricesClient {
             reservoir_api_key: config.reservoir_api_key,
             coinmarketcap_api_key: config.coinmarketcap_api_key,
@@ -104,7 +104,8 @@ mod tests {
     #[tokio::test]
     async fn test_get_best_nft_bid() -> Result<()> {
         dotenv::dotenv().ok();
-        let config_vars = ConfigVars::try_new()?;
+
+        let config_vars: Config = envy::from_env()?;
         let client = PricesClient::new(config_vars);
 
         let price = client.get_best_nft_bid(NftAsset::Azuki).await.unwrap();
@@ -118,7 +119,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_profit_for_nft() -> Result<()> {
-        let config_vars = ConfigVars::try_new()?;
+        let config_vars: Config = envy::from_env()?;
 
         let data_source = GlobalProvider::try_new(config_vars.clone()).await?;
         let prices_client = PricesClient::new(config_vars.clone());

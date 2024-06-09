@@ -1,8 +1,5 @@
 use anyhow::Result;
-use bend_dao_collector::{
-    constants::{addresses::CRYPTOPUNKS, bend_dao::*},
-    LendPool,
-};
+use bend_dao_collector::{constants::*, LendPool};
 use ethers::{
     providers::{Http, Middleware, Provider, RawCall},
     types::*,

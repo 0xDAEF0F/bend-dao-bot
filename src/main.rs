@@ -1,17 +1,14 @@
 use anyhow::Result;
 use bend_dao_collector::benddao::loan::NftAsset;
-use bend_dao_collector::constants::addresses::ORACLE_CONTROLLER_EOA;
-use bend_dao_collector::constants::math::ONE_HOUR;
+use bend_dao_collector::benddao::BendDao;
+use bend_dao_collector::constants::*;
 use bend_dao_collector::lend_pool::LendPool;
 use bend_dao_collector::simulator::Simulator;
-use bend_dao_collector::{benddao::BendDao, constants::bend_dao::LEND_POOL};
-use bend_dao_collector::{simulator, ConfigVars, LendPoolEvents};
-use dotenv::dotenv;
+use bend_dao_collector::{Config, LendPoolEvents};
 use ethers::providers::Middleware;
-use ethers::types::H160;
 use ethers::{
     providers::{Provider, StreamExt, Ws},
-    types::Address,
+    types::*,
 };
 use futures::future::join_all;
 use log::{error, info, warn};
@@ -22,12 +19,12 @@ use tokio::time::{sleep, sleep_until, Duration};
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let _ = dotenv();
+    dotenv::dotenv().ok();
     env_logger::init();
 
-    let config_vars = ConfigVars::try_new()?;
+    let config: Config = envy::from_env()?;
 
-    let mut bend_dao = BendDao::try_new(config_vars.clone()).await?;
+    let mut bend_dao = BendDao::try_new(config.clone()).await?;
 
     let provider = bend_dao.get_provider();
 
@@ -36,11 +33,11 @@ async fn main() -> Result<()> {
     let bend_dao = Arc::new(Mutex::new(bend_dao));
 
     // seperated/out of bend dao struct so lock is shorter
-    let simulator = Simulator::new(config_vars);
+    let simulator = Simulator::new(config);
 
     let task_one_handle = task_one(provider.clone(), bend_dao.clone());
-    let task_two_handle = task_two(provider.clone(), bend_dao.clone());
-    let task_three_handle = task_three(bend_dao.clone(), simulator);
+    let task_two_handle = task_two(provider.clone(), bend_dao.clone(), simulator);
+    let task_three_handle = task_three(bend_dao.clone());
     let task_four_handle = task_four(bend_dao.clone());
 
     join_all([
@@ -118,26 +115,26 @@ fn task_one(
     })
 }
 
-// listen to new blocks in ethereum and update the state
+// listen to mempool for oracle updates
 fn task_two(
     provider: Arc<Provider<Ws>>,
     bend_dao_state: Arc<Mutex<BendDao>>,
+    simulator: Simulator,
 ) -> JoinHandle<Result<()>> {
     tokio::spawn(async move {
         info!("starting task for new blocks");
 
-        let mut stream = provider.subscribe_blocks().await?;
+        let mut stream = provider.subscribe_full_pending_txs().await?;
 
-        while let Some(block) = stream.next().await {
-            info!(
-                "new block: {:?}\nRefreshing monitored loans...",
-                block.number
-            );
-            bend_dao_state
-                .lock()
-                .await
-                .handle_new_block(block.number)
-                .await?;
+        while let Some(tx) = stream.next().await {
+            if tx.to.is_none()
+                || tx.to.unwrap().0 != NFT_ORACLE
+                || tx.from.0 != NFT_ORACLE_CONTROLLER_EOA
+            {
+                continue;
+            }
+
+            let twaps = simulator.simulate_twap_changes(tx).await?;
         }
 
         info!("ending task for new blocks");
@@ -147,31 +144,14 @@ fn task_two(
 }
 
 /// refresh all loans in the system
-/// 
-/// will only trigger upon price refresh
-fn task_three(bend_dao_state: Arc<Mutex<BendDao>>, simulator: Simulator) -> JoinHandle<Result<()>> {
+fn task_three(bend_dao_state: Arc<Mutex<BendDao>>) -> JoinHandle<Result<()>> {
     tokio::spawn(async move {
-        let provider = bend_dao_state.lock().await.get_provider();
-        let mut stream = provider.subscribe_full_pending_txs().await?;
-
-        while let Some(tx) = stream.next().await {
-            if tx.from != H160::from(ORACLE_CONTROLLER_EOA) {
-                continue;
-            }
-
-            match simulator.simulate_twap_changes(tx).await {
-                Ok(prices) => {
-                    // do action
-                }
-                Err(e) => {
-                    error!("could not simulate price changes: {}", e);
-                }
-            }
-
-
+        info!("starting the task to refresh loans every 6 hrs");
+        loop {
+            sleep(Duration::from_secs(ONE_HOUR * 6)).await;
+            info!("refreshing all loans");
+            bend_dao_state.lock().await.build_all_loans().await?;
         }
-
-        Ok(())
     })
 }
 

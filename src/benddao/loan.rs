@@ -1,8 +1,6 @@
 use super::status::Status;
-use crate::constants::addresses::{
-    AZUKI, BAYC, CLONEX, CRYPTOPUNKS, MAYC, PUDGY_PENGUINS, STBAYC, USDT, WETH,
-};
-use crate::constants::bend_dao::{HEALTH_FACTOR_THRESHOLD_TO_MONITOR, TWAP_PRICE_MAP_SLOT};
+use crate::constants::*;
+use crate::global_provider::GlobalProvider;
 use crate::prices_client::PricesClient;
 use anyhow::{bail, Result};
 use core::fmt;
@@ -38,6 +36,20 @@ impl Display for Loan {
 }
 
 impl Loan {
+    pub async fn get_nft_auction_end_time(&self, gp: &GlobalProvider) -> Option<U256> {
+        if !self.status.is_in_current_auction() {
+            return None;
+        }
+
+        let (_loan_id, _bid_start_timestamp, bid_end_timestamp, _redeem_end_timestamp) = gp
+            .lend_pool
+            .get_nft_auction_end_time(self.nft_asset.into(), self.nft_token_id)
+            .await
+            .unwrap();
+
+        Some(bid_end_timestamp)
+    }
+
     pub async fn get_total_debt_eth(&self, prices_client: &PricesClient) -> Result<U256> {
         match self.reserve_asset {
             ReserveAsset::Weth => Ok(self.total_debt),

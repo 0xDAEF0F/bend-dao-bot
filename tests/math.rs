@@ -1,6 +1,6 @@
 #![cfg(test)]
 
-use bend_dao_collector::constants::math::RAY;
+use bend_dao_collector::constants::*;
 use bend_dao_collector::math::ray_mul;
 use ethers::types::U256;
 

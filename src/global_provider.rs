@@ -3,12 +3,9 @@ use crate::{
         balances::Balances,
         loan::{Loan, NftAsset},
     },
-    constants::{
-        addresses::{USDT, WETH},
-        bend_dao::{LEND_POOL, LEND_POOL_LOAN},
-    },
+    constants::*,
     utils::get_loan_data,
-    ConfigVars, Erc20, LendPool, LendPoolLoan, Weth,
+    Config, Erc20, LendPool, LendPoolLoan, Weth,
 };
 use anyhow::{bail, Result};
 use ethers::{
@@ -74,11 +71,14 @@ pub struct GlobalProvider {
 }
 
 impl GlobalProvider {
-    pub async fn try_new(config_vars: ConfigVars) -> Result<GlobalProvider> {
-        let provider = Provider::<Ws>::connect(&config_vars.wss_rpc_url).await?;
+    pub async fn try_new(config_vars: Config) -> Result<GlobalProvider> {
+        let provider = Provider::<Ws>::connect(&config_vars.mainnet_rpc_url_ws).await?;
         let provider = Arc::new(provider);
 
-        info!("connected to provider at: {}", config_vars.wss_rpc_url);
+        info!(
+            "connected to provider at: {}",
+            config_vars.mainnet_rpc_url_ws
+        );
         info!(
             "current block number: {}",
             provider.get_block_number().await?
@@ -183,36 +183,6 @@ impl GlobalProvider {
         debug!("{:?}", balances);
 
         Ok(balances)
-    }
-
-    pub async fn wrap_eth(&self, amount: U256) -> Result<()> {
-        let address = self.local_wallet.address();
-        let wallet_balance: U256 = self.weth.balance_of(address).await?;
-
-        if wallet_balance < amount {
-            bail!("not enough balance to wrap eth")
-        }
-
-        self.weth
-            .deposit()
-            .value(amount)
-            .send()
-            .await?
-            .log_msg(format!("wrapping {} eth", amount))
-            .await?;
-
-        Ok(())
-    }
-
-    pub async fn weth_approve(&self, address: Address, amount: U256) -> Result<()> {
-        self.weth
-            .approve(address, amount)
-            .send()
-            .await?
-            .log_msg(format!("approving {} to spend {} weth", address, amount))
-            .await?;
-
-        Ok(())
     }
 
     pub async fn start_auction(&self, loan: &Loan, bid_price: U256) -> Result<()> {

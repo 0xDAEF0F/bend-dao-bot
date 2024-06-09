@@ -314,7 +314,6 @@ impl BendDao {
 
             if loan.should_monitor() {
                 loans_to_monitor.push((loan.loan_id, loan.health_factor));
-                // self.monitored_loans.insert(loan.loan_id);
                 display_monitored_loans.push_str(&format!("{}\n", loan))
             }
         }

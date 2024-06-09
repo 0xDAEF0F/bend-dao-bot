@@ -4,6 +4,7 @@ use bend_dao_collector::benddao::BendDao;
 use bend_dao_collector::constants::*;
 use bend_dao_collector::lend_pool::LendPool;
 use bend_dao_collector::simulator::Simulator;
+use bend_dao_collector::spoofer::get_new_state_with_twaps_modded;
 use bend_dao_collector::{Config, LendPoolEvents};
 use ethers::providers::Middleware;
 use ethers::{
@@ -122,12 +123,12 @@ fn task_two(
     simulator: Simulator,
 ) -> JoinHandle<Result<()>> {
     tokio::spawn(async move {
-        info!("starting task for new blocks");
+        info!("starting task for mempool updates");
 
         let mut stream = provider.subscribe_full_pending_txs().await?;
 
         while let Some(tx) = stream.next().await {
-            if tx.to.is_none()
+            if tx.to.is_none() // contract creation
                 || tx.to.unwrap().0 != NFT_ORACLE
                 || tx.from.0 != NFT_ORACLE_CONTROLLER_EOA
             {
@@ -135,9 +136,9 @@ fn task_two(
             }
 
             let twaps = simulator.simulate_twap_changes(tx).await?;
+            let modded_state = get_new_state_with_twaps_modded(twaps);
+            // now check health factors
         }
-
-        info!("ending task for new blocks");
 
         Ok(())
     })

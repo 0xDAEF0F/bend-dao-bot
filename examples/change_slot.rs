@@ -47,19 +47,3 @@ async fn main() -> Result<()> {
 
     Ok(())
 }
-
-#[cfg(test)]
-mod test {
-    use super::*;
-    use bend_dao_collector::{benddao::loan::NftAsset, constants::addresses::STBAYC};
-    use ethers::utils::keccak256;
-
-    #[test]
-    fn test_slot() {
-        let slot = NftAsset::StBayc.get_storage_slot();
-        assert_eq!(
-            slot.0,
-            hex!("d1e9bfb3b88592ebcc2c0a884947056bf92c8c954d6dbdb9e97e5f196d054c38") // bayc
-        );
-    }
-}

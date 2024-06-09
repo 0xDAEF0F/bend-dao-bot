@@ -4,8 +4,7 @@ use crate::global_provider::GlobalProvider;
 use crate::prices_client::PricesClient;
 use anyhow::{bail, Result};
 use core::fmt;
-use ethers::types::{Address, H256, U256};
-use ethers::utils::keccak256;
+use ethers::types::*;
 use std::fmt::{Debug, Display, Formatter};
 
 #[derive(Debug, Clone)]
@@ -122,14 +121,6 @@ impl NftAsset {
             NftAsset::Mayc => false,
             NftAsset::Azuki => true,
         }
-    }
-
-    pub fn get_storage_slot(&self) -> H256 {
-        let nft_address: H256 = Address::try_from(*self).unwrap().into();
-
-        let slot = keccak256([nft_address.into(), TWAP_PRICE_MAP_SLOT].concat());
-
-        H256::from_slice(&slot[..])
     }
 }
 

@@ -6,6 +6,7 @@ pub mod math;
 pub mod prices_client;
 pub mod reservoir;
 pub mod simulator;
+pub mod spoofer;
 pub mod utils;
 
 use ethers::contract::abigen;

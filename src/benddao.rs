@@ -14,10 +14,9 @@ use crate::{
 use anyhow::{anyhow, bail, Result};
 use ethers::{
     providers::{Middleware, Provider, Ws},
-    types::{Transaction, H160, U256, U64},
+    types::{H160, U256, U64},
 };
-use ethers_flashbots::{BundleRequest, BundleTransaction};
-use loan::Loan;
+use ethers_flashbots::BundleRequest;
 use log::{error, info, warn};
 use messenger_rs::slack_hook::SlackClient;
 use std::{
@@ -28,7 +27,10 @@ use tokio::time::{Duration, Instant};
 
 #[allow(dead_code)]
 pub struct BendDao {
+    // mapping of collection -> unsorted loan_ids
+    // TODO: sort by lowest HF's
     monitored_loans: HashMap<H160, Vec<U256>>,
+    // TODO: change @manasbir
     pub our_pending_auctions: HashMap<U256, Instant>, // loan_id -> Instant
     global_provider: GlobalProvider,
     prices_client: PricesClient,
@@ -77,16 +79,19 @@ impl BendDao {
             Status::RepaidDefaulted => {
                 // would be nice to update the data store, too but it's not that important.
                 // we can do that in the next synchronization of `build_all_loans`
-                if let Some(pos) = self.monitored_loans.iter().position(|l| l == &loan_id) {
-                    self.monitored_loans.remove(pos);
-                }
+                self.monitored_loans
+                    .get_mut(&H160::from(loan.nft_asset))
+                    .unwrap()
+                    .retain(|x| x != &loan_id);
                 return Ok(());
             }
             Status::Auction(auction) => {
                 // remove from the system. if the loan is redeemed it will be added back
-                if let Some(pos) = self.monitored_loans.iter().position(|l| l == &loan_id) {
-                    self.monitored_loans.remove(pos);
-                }
+                self.monitored_loans
+                    .get_mut(&H160::from(loan.nft_asset))
+                    .unwrap()
+                    .retain(|x| x != &loan_id);
+
                 if !auction.is_ours(&self.global_provider.local_wallet) {
                     self.our_pending_auctions.remove(&loan_id);
                 }
@@ -107,6 +112,8 @@ impl BendDao {
         Ok(())
     }
 
+    // needs to change
+    // TODO
     pub async fn handle_new_block(&mut self, block_number: Option<U64>) -> Result<()> {
         for loan_id in self.monitored_loans.clone().into_iter().take(5) {
             let updated_loan = self
@@ -190,11 +197,12 @@ impl BendDao {
                 continue;
             }
 
-            match self
+            let bundle = self
                 .global_provider
-                .start_auction(&updated_loan, updated_loan.total_debt)
-                .await
-            {
+                .create_auction_bundle(BundleRequest::new(), vec![updated_loan])
+                .await?;
+
+            match self.global_provider.send_bundle(bundle).await {
                 Ok(()) => {
                     let msg = format!(
                         "@here started auction successfully for {:?} #{}",

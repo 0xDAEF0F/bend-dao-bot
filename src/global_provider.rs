@@ -15,7 +15,9 @@ use ethers::{
     signers::{coins_bip39::English, LocalWallet, MnemonicBuilder, Signer, Wallet},
     types::{transaction::eip2718::TypedTransaction, Address, Transaction, U256},
 };
-use ethers_flashbots::{BroadcasterMiddleware, BundleRequest, BundleTransaction, PendingBundleError};
+use ethers_flashbots::{
+    BroadcasterMiddleware, BundleRequest, BundleTransaction, PendingBundleError,
+};
 use futures::future::join_all;
 use log::{debug, error, info};
 use std::sync::Arc;
@@ -38,7 +40,6 @@ static BUILDER_URLS: &[&str] = &[
     "https://rpc.nfactorial.xyz",
     "https://rpc.lokibuilder.xyz",
 ];
-
 
 #[derive(Clone)]
 pub struct GlobalProvider {
@@ -187,8 +188,11 @@ impl GlobalProvider {
         Ok(balances)
     }
 
-
-    pub async fn start_auctions(&self, loans: Vec<Loan>, oracle_update_tx: Transaction) -> Result<()> {
+    pub async fn start_auctions(
+        &self,
+        loans: Vec<Loan>,
+        oracle_update_tx: Transaction,
+    ) -> Result<()> {
         // add oracle update
         let mut bundle = BundleRequest::new().push_transaction(oracle_update_tx);
         // add auction txs
@@ -198,7 +202,11 @@ impl GlobalProvider {
     }
 
     /// creates a vec of tx's for auction based off loans
-    pub async fn create_auction_bundle(&self, mut bundle: BundleRequest, loans: Vec<Loan>) -> Result<BundleRequest> {
+    pub async fn create_auction_bundle(
+        &self,
+        mut bundle: BundleRequest,
+        loans: Vec<Loan>,
+    ) -> Result<BundleRequest> {
         for loan in loans {
             let nft_asset: Address = loan.nft_asset.into();
 
@@ -215,15 +223,13 @@ impl GlobalProvider {
             let signature = self.local_wallet.sign_transaction(&tx).await?;
 
             bundle.add_transaction(tx.rlp_signed(&signature));
-        };
+        }
 
         Ok(bundle)
     }
 
     pub async fn send_bundle(&self, bundle: BundleRequest) -> Result<()> {
-        let results = self.signer_provider.inner()
-            .send_bundle(&bundle)
-            .await?;
+        let results = self.signer_provider.inner().send_bundle(&bundle).await?;
 
         // realistically only needs 1 check
         for result in results {
@@ -243,7 +249,6 @@ impl GlobalProvider {
         }
 
         Ok(())
-
     }
 
     pub async fn liquidate_loan(&self, loan: &Loan) -> Result<()> {

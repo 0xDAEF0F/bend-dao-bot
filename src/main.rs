@@ -2,10 +2,10 @@ use anyhow::Result;
 use bend_dao_collector::benddao::loan::NftAsset;
 use bend_dao_collector::benddao::BendDao;
 use bend_dao_collector::global_provider::GlobalProvider;
-use bend_dao_collector::{constants::*, global_provider};
 use bend_dao_collector::lend_pool::LendPool;
 use bend_dao_collector::simulator::Simulator;
 use bend_dao_collector::spoofer::get_new_state_with_twaps_modded;
+use bend_dao_collector::{constants::*, global_provider};
 use bend_dao_collector::{Config, LendPoolEvents};
 use ethers::providers::Middleware;
 use ethers::{
@@ -41,8 +41,13 @@ async fn main() -> Result<()> {
     let simulator = Simulator::new(config);
 
     let task_one_handle = task_one(provider.clone(), bend_dao.clone());
-    let task_two_handle = task_two(provider.clone(), bend_dao.clone(), global_provider, simulator);
-    let task_three_handle = task_three(bend_dao.clone());
+    let task_two_handle = task_two(
+        provider.clone(),
+        bend_dao.clone(),
+        global_provider.clone(),
+        simulator,
+    );
+    let task_three_handle = task_three(bend_dao.clone(), global_provider);
     let task_four_handle = task_four(bend_dao.clone());
 
     join_all([
@@ -144,7 +149,9 @@ fn task_two(
             let twaps = simulator.simulate_twap_changes(tx).await?;
 
             let modded_state = get_new_state_with_twaps_modded(twaps);
+
             // now check health factors to check which collections are auctionable
+            // TODO: loop through state changes -> update collections with their monitored loans to see if they are auctionable
 
             global_provider.start_auctions(loans, tx);
         }
@@ -154,18 +161,19 @@ fn task_two(
 }
 
 /// cahnge to auction monitored
-fn task_three(bend_dao_state: Arc<Mutex<BendDao>>) -> JoinHandle<Result<()>> {
+// TODO @manasbir
+fn task_three(
+    bend_dao_state: Arc<Mutex<BendDao>>,
+    global_provider: GlobalProvider,
+) -> JoinHandle<Result<()>> {
     tokio::spawn(async move {
-        info!("starting the task to refresh loans every 6 hrs");
-        loop {
-            sleep(Duration::from_secs(ONE_HOUR * 6)).await;
-            info!("refreshing all loans");
-            bend_dao_state.lock().await.build_all_loans().await?;
-        }
+        // let mut stream = global_provider.provider.su
     })
 }
 
 // handle liquidations task
+// can kill after monitoring our active auctions
+// TODO @manasbir
 fn task_four(bend_dao_state: Arc<Mutex<BendDao>>) -> JoinHandle<Result<()>> {
     tokio::spawn(async move {
         loop {

@@ -41,13 +41,7 @@ pub struct BendDao {
 impl BendDao {
     pub async fn try_new(config_vars: Config) -> Result<BendDao> {
         Ok(BendDao {
-            monitored_loans: {
-                let mut monitored_loans = HashMap::new();
-                for collection in ALL_COLLECTIONS {
-                    monitored_loans.insert(H160::from(collection), Vec::new());
-                }
-                monitored_loans
-            },
+            monitored_loans: vec![],
             our_pending_auctions: HashMap::new(),
             global_provider: GlobalProvider::try_new(config_vars.clone()).await?,
             prices_client: PricesClient::new(config_vars.clone()),
@@ -262,8 +256,7 @@ impl BendDao {
         Ok(())
     }
 
-    /// initialization function
-    pub async fn build_all_loans(&mut self) -> Result<()> {
+    pub async fn refresh_monitored_loans(&mut self) -> Result<()> {
         let mut repaid_defaulted_loans_set = get_repaid_defaulted_loans()
             .await
             .unwrap_or_else(|_| BTreeSet::new());
@@ -281,8 +274,6 @@ impl BendDao {
         info!("querying information for {} loans", iter.clone().count());
 
         let all_loans = self.global_provider.get_loans_from_iter(iter, None).await?;
-        let mut display_monitored_loans = String::from("");
-
         let mut loans_to_monitor = vec![];
 
         for loan in all_loans {
@@ -297,16 +288,11 @@ impl BendDao {
             }
 
             if let Status::Auction(auction) = loan.status {
-                if auction.is_ours(&self.global_provider.local_wallet) {
-                    let instant = auction.get_bid_end();
-                    self.our_pending_auctions.insert(loan.loan_id, instant);
-                    continue;
-                }
+                // TODO: Insert it to the current auctions
             }
 
             if loan.should_monitor() {
                 loans_to_monitor.push((loan.loan_id, loan.health_factor));
-                display_monitored_loans.push_str(&format!("{}\n", loan))
             }
         }
 
@@ -318,8 +304,6 @@ impl BendDao {
             .collect();
 
         save_repaid_defaulted_loans(&repaid_defaulted_loans_set).await?;
-
-        let block_number = self.global_provider.provider.get_block_number().await?;
 
         self.notify_and_log_monitored_loans().await?;
 

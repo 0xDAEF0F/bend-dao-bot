@@ -33,7 +33,7 @@ async fn main() -> Result<()> {
     // KILL THIS
     let global_provider = bend_dao.get_global_provider();
 
-    bend_dao.build_all_loans().await?;
+    bend_dao.refresh_monitored_loans().await?;
 
     let bend_dao = Arc::new(Mutex::new(bend_dao));
 

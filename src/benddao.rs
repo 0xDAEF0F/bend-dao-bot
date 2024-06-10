@@ -56,14 +56,17 @@ impl BendDao {
     }
 
     pub async fn react_to_auction(&mut self, evt: AuctionFilter) {
-        // TODO: we need the timestamp
+        let bid_end_timestamp = U256::zero();
+
         let auction = Auction {
             current_bid: evt.bid_price,
             current_bidder: evt.user,
-            bid_start_timestamp: U256::zero(),
+            nft_asset: evt.nft_asset,
+            nft_token_id: evt.nft_token_id,
+            bid_end_timestamp,
         };
 
-        self.pending_auctions.add_auction(auction);
+        self.pending_auctions.update_auction(auction);
 
         self.slack_bot.send_message("").await.ok();
     }

@@ -56,6 +56,12 @@ impl BendDao {
         self.global_provider.provider.clone()
     }
 
+    // temp fn
+    // TODO: CHANGE !!!
+    pub fn get_global_provider(&self) -> GlobalProvider {
+        self.global_provider.clone()
+    }
+
     // assumes that whenever we triggered the auction we already put that in `our_pending_auctions`
     pub async fn update_loan_in_system(&mut self, loan_id: U256) -> Result<()> {
         let loan = match self.global_provider.get_updated_loan(loan_id).await? {
@@ -363,15 +369,6 @@ impl BendDao {
         info!("{msg}");
 
         Ok(())
-    }
-
-    pub async fn start_auctions(&self, loans: Vec<Loan>, oracle_update_tx: Transaction) -> Result<()> {
-        // add oracle update
-        let mut bundle = BundleRequest::new().push_transaction(oracle_update_tx);
-        // add auction txs
-        bundle = self.global_provider.create_auction_bundle(bundle, loans).await?;
-        // send
-        self.global_provider.send_bundle(bundle).await
     }
 
     pub async fn create_db_cache() -> Result<()> {

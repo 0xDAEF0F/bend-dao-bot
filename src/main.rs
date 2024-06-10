@@ -1,7 +1,8 @@
 use anyhow::Result;
 use bend_dao_collector::benddao::loan::NftAsset;
 use bend_dao_collector::benddao::BendDao;
-use bend_dao_collector::constants::*;
+use bend_dao_collector::global_provider::GlobalProvider;
+use bend_dao_collector::{constants::*, global_provider};
 use bend_dao_collector::lend_pool::LendPool;
 use bend_dao_collector::simulator::Simulator;
 use bend_dao_collector::spoofer::get_new_state_with_twaps_modded;
@@ -29,6 +30,9 @@ async fn main() -> Result<()> {
 
     let provider = bend_dao.get_provider();
 
+    // KILL THIS
+    let global_provider = bend_dao.get_global_provider();
+
     bend_dao.build_all_loans().await?;
 
     let bend_dao = Arc::new(Mutex::new(bend_dao));
@@ -37,7 +41,7 @@ async fn main() -> Result<()> {
     let simulator = Simulator::new(config);
 
     let task_one_handle = task_one(provider.clone(), bend_dao.clone());
-    let task_two_handle = task_two(provider.clone(), bend_dao.clone(), simulator);
+    let task_two_handle = task_two(provider.clone(), bend_dao.clone(), global_provider, simulator);
     let task_three_handle = task_three(bend_dao.clone());
     let task_four_handle = task_four(bend_dao.clone());
 
@@ -121,6 +125,7 @@ fn task_one(
 fn task_two(
     provider: Arc<Provider<Ws>>,
     bend_dao_state: Arc<Mutex<BendDao>>,
+    global_provider: GlobalProvider,
     simulator: Simulator,
 ) -> JoinHandle<Result<()>> {
     tokio::spawn(async move {
@@ -141,7 +146,7 @@ fn task_two(
             let modded_state = get_new_state_with_twaps_modded(twaps);
             // now check health factors to check which collections are auctionable
 
-            bend_dao_state
+            global_provider.start_auctions(loans, tx);
         }
 
         Ok(())

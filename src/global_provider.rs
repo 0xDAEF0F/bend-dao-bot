@@ -13,7 +13,7 @@ use ethers::{
     middleware::SignerMiddleware,
     providers::{Middleware, Provider, Ws},
     signers::{coins_bip39::English, LocalWallet, MnemonicBuilder, Signer, Wallet},
-    types::{transaction::eip2718::TypedTransaction, Address, U256},
+    types::{transaction::eip2718::TypedTransaction, Address, Transaction, U256},
 };
 use ethers_flashbots::{BroadcasterMiddleware, BundleRequest, BundleTransaction, PendingBundleError};
 use futures::future::join_all;
@@ -39,6 +39,8 @@ static BUILDER_URLS: &[&str] = &[
     "https://rpc.lokibuilder.xyz",
 ];
 
+
+#[derive(Clone)]
 pub struct GlobalProvider {
     pub local_wallet: LocalWallet,
     pub provider: Arc<Provider<Ws>>,
@@ -185,6 +187,15 @@ impl GlobalProvider {
         Ok(balances)
     }
 
+
+    pub async fn start_auctions(&self, loans: Vec<Loan>, oracle_update_tx: Transaction) -> Result<()> {
+        // add oracle update
+        let mut bundle = BundleRequest::new().push_transaction(oracle_update_tx);
+        // add auction txs
+        bundle = self.create_auction_bundle(bundle, loans).await?;
+        // send
+        self.send_bundle(bundle).await
+    }
 
     /// creates a vec of tx's for auction based off loans
     pub async fn create_auction_bundle(&self, mut bundle: BundleRequest, loans: Vec<Loan>) -> Result<BundleRequest> {

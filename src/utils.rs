@@ -1,6 +1,6 @@
+use crate::types::*;
 use crate::{
     benddao::{
-        auction::Auction,
         loan::{Loan, NftAsset, ReserveAsset},
         status::Status,
     },
@@ -77,8 +77,8 @@ where
         1 => Status::Created,
         2 => Status::Active,
         3 => Status::Auction(Auction {
-            highest_bidder: loan_data.bidder_address,
-            best_bid: loan_data.bid_price,
+            current_bidder: loan_data.bidder_address,
+            current_bid: loan_data.bid_price,
             bid_start_timestamp: loan_data.bid_start_timestamp,
         }),
         4 | 5 => Status::RepaidDefaulted,

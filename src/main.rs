@@ -63,8 +63,7 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-// listen to bend dao lend pool events and modify state
-/// event listener
+/// listens to benddao events and modifies state
 fn task_one(
     provider: Arc<Provider<Ws>>,
     bend_dao_state: Arc<Mutex<BendDao>>,
@@ -205,7 +204,7 @@ fn task_four(bend_dao_state: Arc<Mutex<BendDao>>) -> JoinHandle<Result<()>> {
                                     error!("could not send slack message: {}", err)
                                 });
                             // do not try to liquidate again
-                            lock.our_pending_auctions.remove(&loan_id);
+                            lock.pending_auctions.remove(&loan_id);
                         }
                     }
                 }

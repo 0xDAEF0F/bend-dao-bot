@@ -1,13 +1,12 @@
-pub mod auction;
 pub mod loan;
 pub mod status;
 
-use self::{auction::Auction, status::Status};
+use self::status::Status;
 use crate::{
     constants::*,
     global_provider::GlobalProvider,
     prices_client::PricesClient,
-    types::{AuctionBid, Balances},
+    types::*,
     utils::{calculate_bidding_amount, get_repaid_defaulted_loans, save_repaid_defaulted_loans},
     Config,
 };
@@ -28,11 +27,8 @@ use tokio::time::{Duration, Instant};
 
 #[allow(dead_code)]
 pub struct BendDao {
-    // mapping of collection -> unsorted loan_ids
-    // TODO: sort by lowest HF's
-    monitored_loans: Vec<U256>,
-    // TODO: change @manasbir
-    pub our_pending_auctions: HashMap<U256, Instant>, // loan_id -> Instant
+    monitored_loans: Vec<U256>, // sorted by `health_factor` in ascending order
+    pending_auctions: PendingAuctions,
     global_provider: GlobalProvider,
     prices_client: PricesClient,
     pub slack_bot: SlackClient,
@@ -42,7 +38,7 @@ impl BendDao {
     pub async fn try_new(config_vars: Config) -> Result<BendDao> {
         Ok(BendDao {
             monitored_loans: vec![],
-            our_pending_auctions: HashMap::new(),
+            pending_auctions: PendingAuctions::default(),
             global_provider: GlobalProvider::try_new(config_vars.clone()).await?,
             prices_client: PricesClient::new(config_vars.clone()),
             slack_bot: SlackClient::new(config_vars.clone().slack_url),
@@ -59,7 +55,7 @@ impl BendDao {
         self.global_provider.clone()
     }
 
-    // assumes that whenever we triggered the auction we already put that in `our_pending_auctions`
+    // THIS WILL GET DEPRECATED. IT IS DOING TOO MUCH.
     pub async fn update_loan_in_system(&mut self, loan_id: U256) -> Result<()> {
         let loan = match self.global_provider.get_updated_loan(loan_id).await? {
             None => return Ok(()),
@@ -88,7 +84,7 @@ impl BendDao {
                     .retain(|x| x != &loan_id);
 
                 if !auction.is_ours(&self.global_provider.local_wallet) {
-                    self.our_pending_auctions.remove(&loan_id);
+                    self.pending_auctions.remove(&loan_id);
                 }
                 let msg = format!("auction happening - {}", loan);
                 let _ = self.slack_bot.send_message(&msg).await;
@@ -97,7 +93,7 @@ impl BendDao {
             Status::Active => {
                 // TODO: send a notification to our slack to signal that they redeemed us
                 // if its in our pending auctions we should remove it
-                self.our_pending_auctions.remove(&loan_id);
+                self.pending_auctions.remove(&loan_id);
             }
             Status::Created => {
                 info!("Status::Created is not handled");
@@ -202,7 +198,7 @@ impl BendDao {
     }
 
     pub fn get_next_liquidation(&self) -> Option<(U256, Instant)> {
-        self.our_pending_auctions
+        self.pending_auctions
             .iter()
             .min_by(|a, b| a.1.cmp(b.1))
             .map(|(&loan_id, &instant)| (loan_id, instant))
@@ -245,13 +241,13 @@ impl BendDao {
             bail!("not enough ETH balance to liquidate")
         }
 
-        if auction.best_bid < loan.total_debt {
+        if auction.current_bid < loan.total_debt {
             bail!("can't liquidate because best_bid < total_debt")
         }
 
         self.global_provider.liquidate_loan(&loan).await?;
 
-        self.our_pending_auctions.remove(&loan.loan_id);
+        self.pending_auctions.remove(&loan.loan_id);
 
         Ok(())
     }

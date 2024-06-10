@@ -1,4 +1,4 @@
-use super::auction::Auction;
+use crate::types::Auction;
 use std::fmt::{Display, Formatter, Result};
 
 #[derive(Debug, PartialEq, Copy, Clone)]

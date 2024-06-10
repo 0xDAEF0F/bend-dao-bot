@@ -55,6 +55,7 @@ async fn main() -> Result<()> {
 }
 
 // listen to bend dao lend pool events and modify state
+/// event listener
 fn task_one(
     provider: Arc<Provider<Ws>>,
     bend_dao_state: Arc<Mutex<BendDao>>,
@@ -136,15 +137,18 @@ fn task_two(
             }
 
             let twaps = simulator.simulate_twap_changes(tx).await?;
+
             let modded_state = get_new_state_with_twaps_modded(twaps);
-            // now check health factors
+            // now check health factors to check which collections are auctionable
+
+            bend_dao_state
         }
 
         Ok(())
     })
 }
 
-/// refresh all loans in the system
+/// cahnge to auction monitored
 fn task_three(bend_dao_state: Arc<Mutex<BendDao>>) -> JoinHandle<Result<()>> {
     tokio::spawn(async move {
         info!("starting the task to refresh loans every 6 hrs");

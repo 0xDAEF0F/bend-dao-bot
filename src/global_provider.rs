@@ -13,11 +13,11 @@ use ethers::{
     middleware::SignerMiddleware,
     providers::{Middleware, Provider, Ws},
     signers::{coins_bip39::English, LocalWallet, MnemonicBuilder, Signer, Wallet},
-    types::{Address, U256},
+    types::{transaction::eip2718::TypedTransaction, Address, U256},
 };
-use ethers_flashbots::BroadcasterMiddleware;
+use ethers_flashbots::{BroadcasterMiddleware, BundleRequest, BundleTransaction, PendingBundleError};
 use futures::future::join_all;
-use log::{debug, info};
+use log::{debug, error, info};
 use std::sync::Arc;
 use tokio::{task::JoinHandle, try_join};
 use url::Url;
@@ -185,40 +185,54 @@ impl GlobalProvider {
         Ok(balances)
     }
 
-    pub async fn start_auction(&self, loan: &Loan, bid_price: U256) -> Result<()> {
-        let nft_asset: Address = loan.nft_asset.into();
 
-        let tx = self
-            .lend_pool_with_signer
-            .auction(
-                nft_asset,
-                loan.nft_token_id,
-                bid_price,
-                self.local_wallet.address(),
-            )
-            .tx;
+    /// creates a vec of tx's for auction based off loans
+    pub async fn create_auction_bundle(&self, mut bundle: BundleRequest, loans: Vec<Loan>) -> Result<BundleRequest> {
+        for loan in loans {
+            let nft_asset: Address = loan.nft_asset.into();
 
-        let reciept = self
-            .signer_provider
-            // will send to next blocknumber
-            .send_transaction(tx, None)
-            .await?
-            .log_msg(format!(
-                "starting auction for nft collection: {:?} for {} weth",
-                loan.nft_asset, bid_price
-            ))
+            let tx = self
+                .lend_pool_with_signer
+                .auction(
+                    nft_asset,
+                    loan.nft_token_id,
+                    loan.total_debt,
+                    self.local_wallet.address(),
+                )
+                .tx;
+
+            let signature = self.local_wallet.sign_transaction(&tx).await?;
+
+            bundle.add_transaction(tx.rlp_signed(&signature));
+        };
+
+        Ok(bundle)
+    }
+
+    pub async fn send_bundle(&self, bundle: BundleRequest) -> Result<()> {
+        let results = self.signer_provider.inner()
+            .send_bundle(&bundle)
             .await?;
 
-        if let Some(reciept) = reciept {
-            info!(
-                "auction succesfully started view here: https://etherscan.io/tx/{:?}",
-                reciept.transaction_hash
-            );
-        } else {
-            bail!("auction failed")
+        // realistically only needs 1 check
+        for result in results {
+            match result {
+                Ok(pending_bundle) => match pending_bundle.await {
+                    Ok(bundle_hash) => info!(
+                        "Bundle with hash {:?} was included in target block",
+                        bundle_hash.unwrap_or_default()
+                    ),
+                    Err(PendingBundleError::BundleNotIncluded) => {
+                        error!("Bundle was not included in target block.")
+                    }
+                    Err(e) => error!("An error occured: {}", e),
+                },
+                Err(e) => error!("An error occured: {}", e),
+            }
         }
 
         Ok(())
+
     }
 
     pub async fn liquidate_loan(&self, loan: &Loan) -> Result<()> {

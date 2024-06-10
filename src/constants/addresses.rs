@@ -18,3 +18,5 @@ pub const MAYC: [u8; 20] = hex!("60e4d786628fea6478f785a6d7e704777c86a7c6");
 pub const CRYPTOPUNKS: [u8; 20] = hex!("b7f7f6c52f2e2fdb1963eab30438024864c313f6");
 pub const CLONEX: [u8; 20] = hex!("49cf6f5d44e70224e2e23fdcdd2c053f30ada28b");
 pub const PUDGY_PENGUINS: [u8; 20] = hex!("bd3531da5cf5857e7cfaa92426877b022e612cf8");
+
+pub const ALL_COLLECTIONS: [[u8;20];7] = [AZUKI, BAYC, STBAYC, MAYC, CRYPTOPUNKS, CLONEX, PUDGY_PENGUINS];

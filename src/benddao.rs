@@ -6,28 +6,29 @@ pub mod status;
 use self::{auction::Auction, status::Status};
 use crate::{
     constants::*,
-    global_provider::GlobalProvider,
+    global_provider::{self, GlobalProvider},
     prices_client::PricesClient,
-    simulator::Simulator,
     utils::{calculate_bidding_amount, get_repaid_defaulted_loans, save_repaid_defaulted_loans},
     Config,
 };
 use anyhow::{anyhow, bail, Result};
 use ethers::{
     providers::{Middleware, Provider, Ws},
-    types::{U256, U64},
+    types::{Transaction, H160, U256, U64},
 };
+use ethers_flashbots::{BundleRequest, BundleTransaction};
+use loan::Loan;
 use log::{error, info, warn};
 use messenger_rs::slack_hook::SlackClient;
 use std::{
-    collections::{BTreeSet, HashMap},
+    collections::{self, BTreeSet, HashMap},
     sync::Arc,
 };
 use tokio::time::{Duration, Instant};
 
 #[allow(dead_code)]
 pub struct BendDao {
-    monitored_loans: Vec<U256>,
+    monitored_loans: HashMap<H160, Vec<U256>>,
     pub our_pending_auctions: HashMap<U256, Instant>, // loan_id -> Instant
     global_provider: GlobalProvider,
     prices_client: PricesClient,
@@ -37,7 +38,13 @@ pub struct BendDao {
 impl BendDao {
     pub async fn try_new(config_vars: Config) -> Result<BendDao> {
         Ok(BendDao {
-            monitored_loans: Vec::new(),
+            monitored_loans: {
+                let mut monitored_loans = HashMap::new();
+                for collection in ALL_COLLECTIONS {
+                    monitored_loans.insert(H160::from(collection), Vec::new());
+                }
+                monitored_loans
+            },
             our_pending_auctions: HashMap::new(),
             global_provider: GlobalProvider::try_new(config_vars.clone()).await?,
             prices_client: PricesClient::new(config_vars.clone()),
@@ -356,6 +363,15 @@ impl BendDao {
         info!("{msg}");
 
         Ok(())
+    }
+
+    pub async fn start_auctions(&self, loans: Vec<Loan>, oracle_update_tx: Transaction) -> Result<()> {
+        // add oracle update
+        let mut bundle = BundleRequest::new().push_transaction(oracle_update_tx);
+        // add auction txs
+        bundle = self.global_provider.create_auction_bundle(bundle, loans).await?;
+        // send
+        self.global_provider.send_bundle(bundle).await
     }
 
     pub async fn create_db_cache() -> Result<()> {

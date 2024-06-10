@@ -150,10 +150,11 @@ fn task_two(
 
             let modded_state = get_new_state_with_twaps_modded(twaps);
 
-            // now check health factors to check which collections are auctionable
-            // TODO: loop through state changes -> update collections with their monitored loans to see if they are auctionable
-
-            global_provider.start_auctions(loans, tx);
+            bend_dao_state
+                .lock()
+                .await
+                .initiate_auctions_if_any(Some(modded_state))
+                .await?;
         }
 
         Ok(())

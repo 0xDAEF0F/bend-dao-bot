@@ -1,9 +1,7 @@
 use crate::{
-    benddao::{
-        balances::Balances,
-        loan::{Loan, NftAsset},
-    },
+    benddao::loan::{Loan, NftAsset},
     constants::*,
+    types::*,
     utils::get_loan_data,
     Config, Erc20, LendPool, LendPoolLoan, Weth,
 };
@@ -13,11 +11,9 @@ use ethers::{
     middleware::SignerMiddleware,
     providers::{Middleware, Provider, Ws},
     signers::{coins_bip39::English, LocalWallet, MnemonicBuilder, Signer, Wallet},
-    types::{transaction::eip2718::TypedTransaction, Address, Transaction, U256},
+    types::{spoof::State, Address, Transaction, U256},
 };
-use ethers_flashbots::{
-    BroadcasterMiddleware, BundleRequest, BundleTransaction, PendingBundleError,
-};
+use ethers_flashbots::{BroadcasterMiddleware, BundleRequest, PendingBundleError};
 use futures::future::join_all;
 use log::{debug, error, info};
 use std::sync::Arc;
@@ -132,7 +128,11 @@ impl GlobalProvider {
         })
     }
 
-    pub async fn get_loans_from_iter(&self, range: impl Iterator<Item = u64>) -> Result<Vec<Loan>> {
+    pub async fn get_loans_from_iter(
+        &self,
+        range: impl Iterator<Item = u64>,
+        state: Option<State>,
+    ) -> Result<Vec<Loan>> {
         let mut handles = Vec::new();
         let mut loans: Vec<Loan> = Vec::new();
 
@@ -140,10 +140,10 @@ impl GlobalProvider {
             let loan_id = U256::from_little_endian(&loan_id.to_le_bytes());
             let lend_pool = self.lend_pool.clone();
             let lend_pool_loan = self.lend_pool_loan.clone();
-            let future: JoinHandle<Result<Option<Loan>>> =
-                tokio::spawn(
-                    async move { get_loan_data(loan_id, lend_pool, lend_pool_loan).await },
-                );
+            let state = state.clone();
+            let future: JoinHandle<Result<Option<Loan>>> = tokio::spawn(async move {
+                get_loan_data(loan_id, lend_pool, lend_pool_loan, state).await
+            });
             handles.push(future);
         }
 
@@ -160,7 +160,13 @@ impl GlobalProvider {
     }
 
     pub async fn get_updated_loan(&self, loan_id: U256) -> Result<Option<Loan>> {
-        get_loan_data(loan_id, self.lend_pool.clone(), self.lend_pool_loan.clone()).await
+        get_loan_data(
+            loan_id,
+            self.lend_pool.clone(),
+            self.lend_pool_loan.clone(),
+            None,
+        )
+        .await
     }
 
     pub async fn get_balances(&self) -> Result<Balances> {
@@ -190,7 +196,7 @@ impl GlobalProvider {
 
     pub async fn start_auctions(
         &self,
-        loans: Vec<Loan>,
+        loans: Vec<AuctionBid>,
         oracle_update_tx: Transaction,
     ) -> Result<()> {
         // add oracle update
@@ -205,7 +211,7 @@ impl GlobalProvider {
     pub async fn create_auction_bundle(
         &self,
         mut bundle: BundleRequest,
-        loans: Vec<Loan>,
+        loans: Vec<AuctionBid>,
     ) -> Result<BundleRequest> {
         for loan in loans {
             let nft_asset: Address = loan.nft_asset.into();
@@ -215,7 +221,7 @@ impl GlobalProvider {
                 .auction(
                     nft_asset,
                     loan.nft_token_id,
-                    loan.total_debt,
+                    loan.bid_price,
                     self.local_wallet.address(),
                 )
                 .tx;

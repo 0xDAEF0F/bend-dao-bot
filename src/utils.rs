@@ -8,8 +8,8 @@ use crate::{
 };
 use anyhow::Result;
 use ethers::{
-    providers::{JsonRpcClient, Provider},
-    types::U256,
+    providers::{JsonRpcClient, Provider, RawCall},
+    types::{spoof::State, U256},
 };
 use log::debug;
 use std::collections::BTreeSet;
@@ -51,15 +51,26 @@ pub fn calculate_bidding_amount(total_debt: U256) -> U256 {
 
 // builds a loan based on the struct `Loan`. does not care if the
 // `NftAsset` is not supported in production
+/// TODO: need to make the two async calls concurrent with `try_join`.
+/// To do that we need to have already stored the token_id and nft_asset
 pub async fn get_loan_data<U>(
     loan_id: U256,
     lend_pool: LendPool<Provider<U>>,
     lend_pool_loan: LendPoolLoan<Provider<U>>,
+    state: Option<State>,
 ) -> Result<Option<Loan>>
 where
     U: JsonRpcClient + 'static,
 {
-    let loan_data: LoanData = lend_pool_loan.get_loan(loan_id).await?;
+    let loan_data: LoanData = if let Some(state) = state.clone() {
+        lend_pool_loan
+            .get_loan(loan_id)
+            .call_raw()
+            .state(&state)
+            .await?
+    } else {
+        lend_pool_loan.get_loan(loan_id).await?
+    };
 
     let status = match loan_data.state {
         0 => return Ok(None),
@@ -90,9 +101,17 @@ where
         }
     };
 
-    let (_, _, _, total_debt, _, health_factor) = lend_pool
-        .get_nft_debt_data(loan_data.nft_asset, loan_data.nft_token_id)
-        .await?;
+    let (_, _, _, total_debt, _, health_factor) = if let Some(state) = state {
+        lend_pool
+            .get_nft_debt_data(loan_data.nft_asset, loan_data.nft_token_id)
+            .call_raw()
+            .state(&state)
+            .await?
+    } else {
+        lend_pool
+            .get_nft_debt_data(loan_data.nft_asset, loan_data.nft_token_id)
+            .await?
+    };
 
     let loan = Loan {
         health_factor,

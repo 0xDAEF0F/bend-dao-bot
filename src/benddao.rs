@@ -1,22 +1,23 @@
 pub mod auction;
-pub mod balances;
 pub mod loan;
 pub mod status;
 
 use self::{auction::Auction, status::Status};
 use crate::{
     constants::*,
-    global_provider::{self, GlobalProvider},
+    global_provider::GlobalProvider,
     prices_client::PricesClient,
+    types::{AuctionBid, Balances},
     utils::{calculate_bidding_amount, get_repaid_defaulted_loans, save_repaid_defaulted_loans},
     Config,
 };
 use anyhow::{anyhow, bail, Result};
 use ethers::{
     providers::{Middleware, Provider, Ws},
-    types::{H160, U256, U64},
+    types::{spoof::State, H160, U256, U64},
 };
 use ethers_flashbots::BundleRequest;
+use loan::{Loan, ReserveAsset};
 use log::{error, info, warn};
 use messenger_rs::slack_hook::SlackClient;
 use std::{
@@ -29,7 +30,7 @@ use tokio::time::{Duration, Instant};
 pub struct BendDao {
     // mapping of collection -> unsorted loan_ids
     // TODO: sort by lowest HF's
-    monitored_loans: HashMap<H160, Vec<U256>>,
+    monitored_loans: Vec<U256>,
     // TODO: change @manasbir
     pub our_pending_auctions: HashMap<U256, Instant>, // loan_id -> Instant
     global_provider: GlobalProvider,
@@ -112,128 +113,98 @@ impl BendDao {
         Ok(())
     }
 
-    // needs to change
-    // TODO
-    pub async fn handle_new_block(&mut self, block_number: Option<U64>) -> Result<()> {
-        for loan_id in self.monitored_loans.clone().into_iter().take(5) {
-            let updated_loan = self
-                .global_provider
-                .get_updated_loan(loan_id)
-                .await?
-                .unwrap();
+    pub async fn initiate_auctions_if_any(&mut self, modded_state: Option<State>) -> Result<()> {
+        let iter = self.monitored_loans.iter().map(|x| x.as_u64());
+        let monitored_loans = self
+            .global_provider
+            .get_loans_from_iter(iter, modded_state)
+            .await?;
 
-            if let Status::Auction(_auction) = updated_loan.status {
-                warn!("transitioned to `Status::Auction` and was not handled by event listener");
-                continue;
+        let mut balances = self.global_provider.get_balances().await?;
+
+        let loans_ready_to_auction =
+            BendDao::package_loans_ready_to_auction(monitored_loans, &mut balances);
+
+        if loans_ready_to_auction.is_empty() {
+            return Ok(());
+        }
+
+        let bundle = self
+            .global_provider
+            .create_auction_bundle(BundleRequest::new(), loans_ready_to_auction)
+            .await?;
+
+        match self.global_provider.send_bundle(bundle).await {
+            Ok(()) => {
+                info!("started an auction bundle");
+                let _ = self
+                    .slack_bot
+                    .send_message("started an auction bundle")
+                    .await;
             }
-
-            if !updated_loan.should_monitor() {
-                let msg = format!(
-                    "removing {:?} #{} from monitored loans. HF: {:.2}",
-                    updated_loan.nft_asset,
-                    updated_loan.nft_token_id,
-                    updated_loan.health_factor()
-                );
-                info!("{msg}");
-                let pos = self
-                    .monitored_loans
-                    .iter()
-                    .position(|l| l == &updated_loan.loan_id)
-                    .unwrap();
-                self.monitored_loans.remove(pos);
-                continue;
-            }
-
-            if !updated_loan.is_auctionable() {
-                info!(
-                    "{:?} #{} not auctionable. skipping...",
-                    updated_loan.nft_asset, updated_loan.nft_token_id
-                );
-                continue;
-            }
-
-            // IS PROFITABLE
-            // let (best_bid_eth, total_debt_eth) = try_join!(
-            //     self.prices_client.get_best_nft_bid(updated_loan.nft_asset),
-            //     updated_loan.get_total_debt_eth(&self.prices_client)
-            // )?;
-
-            // let bidding_amount = calculate_bidding_amount(total_debt_eth);
-
-            // if best_bid_eth < bidding_amount {
-            //     let debt_human_readable = total_debt_eth.as_u128() as f64 / 1e18;
-            //     let best_bid_human_readable = best_bid_eth.as_u128() as f64 / 1e18;
-            //     info!(
-            //         "{}",
-            //         format!(
-            //             ">> unprofitable | total debt: {:.2} > best bid: {:.2}",
-            //             debt_human_readable, best_bid_human_readable
-            //         )
-            //     );
-            //     continue;
-            // }
-
-            // let potential_profit = format_ether(best_bid_eth - bidding_amount);
-            // let potential_profit = potential_profit
-            //     .parse::<f64>()
-            //     .expect("unable to convert ETH to f64");
-            // info!(
-            //     "{}",
-            //     format!(">> potential profit: {:.4} ETH", potential_profit)
-            // );
-            // let slack_msg = format!(
-            //     "potential profit of ~ {:.4} ETH for {:?} #{}\nproceeding to start auction...",
-            //     potential_profit, updated_loan.nft_asset, updated_loan.nft_token_id
-            // );
-            // let _ = self.slack_bot.send_msg(&slack_msg).await;
-
-            // IS PROFITABLE [END]
-
-            let balances = self.global_provider.get_balances().await?;
-
-            if let (false, log) = balances.can_initiate_auction_with_log(&updated_loan) {
-                warn!("{log}");
-                let _ = self.slack_bot.send_message(&log).await;
-                continue;
-            }
-
-            let bundle = self
-                .global_provider
-                .create_auction_bundle(BundleRequest::new(), vec![updated_loan])
-                .await?;
-
-            match self.global_provider.send_bundle(bundle).await {
-                Ok(()) => {
-                    let msg = format!(
-                        "@here started auction successfully for {:?} #{}",
-                        updated_loan.nft_asset, updated_loan.nft_token_id
-                    );
-                    info!("{msg}");
-                    let _ = self.slack_bot.send_message(&msg).await;
-                    let cushion_time = ONE_MINUTE * 5;
-                    let instant = Instant::now() + Duration::from_secs(ONE_DAY + cushion_time);
-                    self.our_pending_auctions
-                        .insert(updated_loan.loan_id, instant);
-                }
-                Err(e) => {
-                    let msg = format!(
-                        "@here failed to start auction for {:?} #{}",
-                        updated_loan.nft_asset, updated_loan.nft_token_id
-                    );
-                    let _ = self.slack_bot.send_message(&msg).await;
-                    error!("{msg}");
-                    error!("{e}");
-                }
+            Err(e) => {
+                error!("{e}");
+                let _ = self.slack_bot.send_message("failed to start bundle").await;
             }
         }
 
-        // send slack message and log every 300 blocks the monitored loans
-        if block_number.is_some_and(|x| x.as_u64() % 300 == 0) {
-            let block_number = block_number.unwrap();
-            self.notify_and_log_monitored_loans(block_number).await?;
-        }
+        self.notify_and_log_monitored_loans().await?;
 
         Ok(())
+    }
+
+    fn package_loans_ready_to_auction(
+        loans: Vec<Loan>,
+        balances: &mut Balances,
+    ) -> Vec<AuctionBid> {
+        let mut loans_for_auction = vec![];
+
+        for loan in loans {
+            if loan.status != Status::Active || !loan.is_auctionable() {
+                info!("loan is not auctionable");
+                continue;
+            }
+
+            if !balances.is_usdt_lend_pool_approved || !balances.is_weth_lend_pool_approved {
+                warn!("dont have approved usdt/weth");
+                continue;
+            }
+
+            if !balances.eth < U256::exp10(16) {
+                warn!("not enough eth for txn");
+                continue;
+            } else {
+                balances.eth -= U256::exp10(16);
+            }
+
+            let bid_amount = calculate_bidding_amount(loan.total_debt);
+            match loan.reserve_asset {
+                ReserveAsset::Usdt => {
+                    if balances.usdt < bid_amount {
+                        continue;
+                    } else {
+                        balances.usdt -= bid_amount;
+                    }
+                }
+                ReserveAsset::Weth => {
+                    if balances.weth < bid_amount {
+                        continue;
+                    } else {
+                        balances.weth -= bid_amount;
+                    }
+                }
+            }
+
+            let auction_bid = AuctionBid {
+                bid_price: bid_amount,
+                nft_asset: loan.nft_asset.into(),
+                nft_token_id: loan.nft_token_id,
+            };
+
+            loans_for_auction.push(auction_bid)
+        }
+
+        loans_for_auction
     }
 
     pub fn get_next_liquidation(&self) -> Option<(U256, Instant)> {
@@ -276,7 +247,7 @@ impl BendDao {
 
         let balances = self.global_provider.get_balances().await?;
 
-        if !balances.has_enough_gas_to_auction_or_liquidate() {
+        if balances.eth < U256::exp10(16) {
             bail!("not enough ETH balance to liquidate")
         }
 
@@ -309,7 +280,7 @@ impl BendDao {
 
         info!("querying information for {} loans", iter.clone().count());
 
-        let all_loans = self.global_provider.get_loans_from_iter(iter).await?;
+        let all_loans = self.global_provider.get_loans_from_iter(iter, None).await?;
         let mut display_monitored_loans = String::from("");
 
         let mut loans_to_monitor = vec![];
@@ -349,19 +320,27 @@ impl BendDao {
         save_repaid_defaulted_loans(&repaid_defaulted_loans_set).await?;
 
         let block_number = self.global_provider.provider.get_block_number().await?;
-        // send slack message and log every 300 blocks the monitored loans
-        if block_number % U64::from(300) == U64::zero() {
-            self.notify_and_log_monitored_loans(block_number).await?;
-        }
+
+        self.notify_and_log_monitored_loans().await?;
 
         Ok(())
     }
 
-    pub async fn notify_and_log_monitored_loans(&self, block_number: U64) -> Result<()> {
+    /// Notifies to slack and logs monitored loans every 600 blocks ~ 2 Hrs
+    pub async fn notify_and_log_monitored_loans(&self) -> Result<()> {
+        let block_number = self.global_provider.provider.get_block_number().await?;
+
+        if block_number.as_u64() % 600 != 0 {
+            return Ok(());
+        }
+
         let mut msg = format!("~~~ Block: *#{}* ~~~\n", block_number);
 
         let range = self.monitored_loans.iter().map(|loan_id| loan_id.as_u64());
-        let mut loans = self.global_provider.get_loans_from_iter(range).await?;
+        let mut loans = self
+            .global_provider
+            .get_loans_from_iter(range, None)
+            .await?;
         loans.sort_by_key(|x| x.health_factor);
 
         for loan in loans.into_iter().take(5) {

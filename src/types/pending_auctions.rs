@@ -8,13 +8,14 @@ pub struct PendingAuctions {
 }
 
 impl PendingAuctions {
+    /// peek ahead into the next auction that will expire next.
     pub fn peek(&self) -> Option<&Auction> {
-        self.pending_auctions.last()
+        todo!()
     }
 
     /// should give the next auction that will end first.
     pub fn pop(&mut self) -> Option<Auction> {
-        self.pending_auctions.pop()
+        todo!()
     }
 
     /// adds a new auction and takes care of sorting them.
@@ -23,7 +24,7 @@ impl PendingAuctions {
     }
 
     /// removes an auction from state.
-    pub fn remove_auction(&mut self, token_id: U256) {
+    pub fn remove_auction(&mut self, loan_id: U256) {
         todo!()
     }
 }

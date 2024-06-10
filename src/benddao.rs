@@ -8,7 +8,7 @@ use crate::{
     prices_client::PricesClient,
     types::*,
     utils::{calculate_bidding_amount, get_repaid_defaulted_loans, save_repaid_defaulted_loans},
-    Config,
+    AuctionFilter, Config, LiquidateFilter, RedeemFilter,
 };
 use anyhow::{anyhow, bail, Result};
 use ethers::{
@@ -16,7 +16,7 @@ use ethers::{
     types::{spoof::State, H160, U256, U64},
 };
 use ethers_flashbots::BundleRequest;
-use loan::{Loan, ReserveAsset};
+use loan::{Loan, NftAsset, ReserveAsset};
 use log::{error, info, warn};
 use messenger_rs::slack_hook::SlackClient;
 use std::{
@@ -53,6 +53,40 @@ impl BendDao {
     // TODO: CHANGE !!!
     pub fn get_global_provider(&self) -> GlobalProvider {
         self.global_provider.clone()
+    }
+
+    pub async fn react_to_auction(&mut self, evt: AuctionFilter) {
+        // TODO: we need the timestamp
+        let auction = Auction {
+            current_bid: evt.bid_price,
+            current_bidder: evt.user,
+            bid_start_timestamp: U256::zero(),
+        };
+
+        self.pending_auctions.add_auction(auction);
+
+        self.slack_bot.send_message("").await.ok();
+    }
+
+    pub async fn react_to_redeem(&mut self, evt: RedeemFilter) {
+        self.pending_auctions.remove_auction(evt.loan_id);
+
+        let nft_asset = NftAsset::try_from(evt.nft_asset).unwrap();
+        let msg = format!("redeem happened. {:?} #{}", nft_asset, evt.nft_token_id);
+        warn!("{msg}");
+        self.slack_bot.send_message(&msg).await.ok();
+    }
+
+    pub async fn react_to_liquidation(&mut self, evt: LiquidateFilter) {
+        self.pending_auctions.remove_auction(evt.loan_id);
+
+        let nft_asset = NftAsset::try_from(evt.nft_asset).unwrap();
+        let msg = format!(
+            "liquidation happened. {:?} #{}",
+            nft_asset, evt.nft_token_id
+        );
+        warn!("{msg}");
+        self.slack_bot.send_message(&msg).await.ok();
     }
 
     // THIS WILL GET DEPRECATED. IT IS DOING TOO MUCH.

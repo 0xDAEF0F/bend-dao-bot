@@ -80,39 +80,19 @@ fn task_one(
         while let Some(Ok(evt)) = stream.next().await {
             let mut bd_lock = bend_dao_state.lock().await;
             match evt {
-                LendPoolEvents::BorrowFilter(evt) => {
-                    if NftAsset::try_from(evt.nft_asset).is_ok() {
-                        // a loan has been created or re-borrowed more
-                        bd_lock.update_loan_in_system(evt.loan_id).await?;
-                    }
-                }
-                LendPoolEvents::RepayFilter(evt) => {
-                    if NftAsset::try_from(evt.nft_asset).is_ok() {
-                        // repayment occured. either partial or total
-                        bd_lock.update_loan_in_system(evt.loan_id).await?;
-                    }
-                }
                 LendPoolEvents::AuctionFilter(evt) => {
                     if NftAsset::try_from(evt.nft_asset).is_ok() {
-                        bd_lock.update_loan_in_system(evt.loan_id).await?;
+                        bd_lock.react_to_auction(evt).await;
                     }
                 }
                 LendPoolEvents::RedeemFilter(evt) => {
                     if NftAsset::try_from(evt.nft_asset).is_ok() {
-                        // loan has been partially repaid by owner and
-                        // moved from auctions to active again
-                        bd_lock.update_loan_in_system(evt.loan_id).await?;
+                        bd_lock.react_to_redeem(evt).await;
                     }
                 }
                 LendPoolEvents::LiquidateFilter(evt) => {
                     if let Ok(nft_asset) = NftAsset::try_from(evt.nft_asset) {
-                        let msg = format!(
-                            "liquidation happened. {:?} #{}",
-                            nft_asset, evt.nft_token_id
-                        );
-                        let _ = bd_lock.slack_bot.send_message(&msg).await;
-                        // loan was already taken off the system when the auction happened
-                        info!("{:?} #{} liquidated", nft_asset, evt.nft_token_id);
+                        bd_lock.react_to_liquidation(evt).await;
                     }
                 }
                 _ => {}

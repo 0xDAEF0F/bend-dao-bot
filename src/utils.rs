@@ -76,11 +76,18 @@ where
         0 => return Ok(None),
         1 => Status::Created,
         2 => Status::Active,
-        3 => Status::Auction(Auction {
-            current_bidder: loan_data.bidder_address,
-            current_bid: loan_data.bid_price,
-            bid_start_timestamp: loan_data.bid_start_timestamp,
-        }),
+        3 => {
+            let (_, _, bid_end_timestamp, _) = lend_pool
+                .get_nft_auction_end_time(loan_data.nft_asset, loan_data.nft_token_id)
+                .await?;
+            Status::Auction(Auction {
+                current_bidder: loan_data.bidder_address,
+                current_bid: loan_data.bid_price,
+                bid_end_timestamp,
+                nft_asset: loan_data.nft_asset,
+                nft_token_id: loan_data.nft_token_id,
+            })
+        }
         4 | 5 => Status::RepaidDefaulted,
         _ => panic!("invalid state"),
     };

@@ -56,7 +56,10 @@ impl BendDao {
     }
 
     pub async fn react_to_auction(&mut self, evt: AuctionFilter) {
-        let bid_end_timestamp = U256::zero();
+        let bid_end_timestamp = self
+            .global_provider
+            .get_auction_end_timestamp(evt.nft_asset, evt.nft_token_id)
+            .await;
 
         let auction = Auction {
             current_bid: evt.bid_price,
@@ -66,13 +69,14 @@ impl BendDao {
             bid_end_timestamp,
         };
 
-        self.pending_auctions.update_auction(auction);
+        self.pending_auctions.add_update_auction(auction);
 
         self.slack_bot.send_message("").await.ok();
     }
 
     pub async fn react_to_redeem(&mut self, evt: RedeemFilter) {
-        self.pending_auctions.remove_auction(evt.loan_id);
+        self.pending_auctions
+            .remove_auction(evt.nft_asset, evt.nft_token_id);
 
         let nft_asset = NftAsset::try_from(evt.nft_asset).unwrap();
         let msg = format!("redeem happened. {:?} #{}", nft_asset, evt.nft_token_id);
@@ -321,7 +325,7 @@ impl BendDao {
             }
 
             if let Status::Auction(auction) = loan.status {
-                // TODO: Insert it to the current auctions
+                self.pending_auctions.add_update_auction(auction);
             }
 
             if loan.should_monitor() {

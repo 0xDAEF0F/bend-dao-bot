@@ -285,6 +285,15 @@ impl GlobalProvider {
         Ok(())
     }
 
+    pub async fn get_auction_end_timestamp(&self, nft_asset: Address, token_id: U256) -> U256 {
+        let (_loan_id, _bid_start_timestamp, bid_end_timestamp, _redeem_end_timestamp) = self
+            .lend_pool
+            .get_nft_auction_end_time(nft_asset, token_id)
+            .await
+            .unwrap();
+        bid_end_timestamp
+    }
+
     pub async fn has_auction_ended(&self, nft_asset: NftAsset, token_id: U256) -> Result<bool> {
         let latest_block = self.provider.get_block_number().await?;
         let timestamp = self

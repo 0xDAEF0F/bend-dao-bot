@@ -214,7 +214,7 @@ impl GlobalProvider {
         loans: Vec<AuctionBid>,
         // temp
         // TODO decide what to gas
-        max_gas: bool
+        max_gas: bool,
     ) -> Result<BundleRequest> {
         for loan in loans {
             let nft_asset: Address = loan.nft_asset.into();

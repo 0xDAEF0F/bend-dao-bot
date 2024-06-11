@@ -148,7 +148,14 @@ fn task_three(
 ) -> JoinHandle<Result<()>> {
     tokio::spawn(async move {
         // minus 2.5 blocks
-        let mut upcoming_auction = (bend_dao_state.lock().await.pending_auctions.peek().unwrap().bid_end_timestamp) - DELAY_FOR_LAST_BID;
+        let mut upcoming_auction = (bend_dao_state
+            .lock()
+            .await
+            .pending_auctions
+            .peek()
+            .unwrap()
+            .bid_end_timestamp)
+            - DELAY_FOR_LAST_BID;
 
         // loop > stream bc blocks take compute
         loop {
@@ -165,13 +172,19 @@ fn task_three(
                         Err(e) => {
                             error!("could not bid: {}", e);
                             // peek is fine bc first instruction in fn is to pop value
-                            bend_dao_state.lock().await.pending_auctions.peek().unwrap().bid_end_timestamp - DELAY_FOR_LAST_BID
+                            bend_dao_state
+                                .lock()
+                                .await
+                                .pending_auctions
+                                .peek()
+                                .unwrap()
+                                .bid_end_timestamp
+                                - DELAY_FOR_LAST_BID
                         }
                     };
                 });
             }
         }
-        
     })
 }
 

@@ -13,7 +13,7 @@ impl AuctionBid {
         Self {
             nft_asset: auction.nft_asset,
             nft_token_id: auction.nft_token_id,
-            bid_price
+            bid_price,
         }
     }
 }

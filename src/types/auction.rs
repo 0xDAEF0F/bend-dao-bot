@@ -1,5 +1,5 @@
-use ethers::types::*;
 use crate::benddao::loan::ReserveAsset;
+use ethers::types::*;
 
 #[derive(Debug, PartialEq, Copy, Clone)]
 pub struct Auction {
@@ -10,5 +10,5 @@ pub struct Auction {
     // idk why it needs to be U64
     pub bid_end_block_number: u64,
     // matters for profit calculation
-    pub token: ReserveAsset
+    pub token: ReserveAsset,
 }

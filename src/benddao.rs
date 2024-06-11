@@ -388,18 +388,24 @@ impl BendDao {
         // TODO: @0xDAEF0F, choose bid price
         let bid = auction.current_bid * 101 / 100;
 
-        
-        if price  > bid {
-            self.send_bid(auction, auction.current_bid * 101 / 100).await?;
+        if price > bid {
+            self.send_bid(auction, auction.current_bid * 101 / 100)
+                .await?;
         }
 
-        info!("bid on {:?} #{} was not profitable for {} as price is: {}", auction.nft_asset, auction.nft_token_id, bid, price);
+        info!(
+            "bid on {:?} #{} was not profitable for {} as price is: {}",
+            auction.nft_asset, auction.nft_token_id, bid, price
+        );
 
         Ok(self.pending_auctions.peek().unwrap().bid_end_timestamp)
     }
 
     async fn get_price_in_currency(&self, auction: &Auction) -> Result<U256> {
-        let mut price = self.prices_client.get_best_nft_bid(NftAsset::try_from(auction.nft_asset)?).await?;
+        let mut price = self
+            .prices_client
+            .get_best_nft_bid(NftAsset::try_from(auction.nft_asset)?)
+            .await?;
 
         if auction.token != ReserveAsset::Weth {
             let rate = self.prices_client.get_usdt_eth_price().await?;
@@ -410,10 +416,12 @@ impl BendDao {
     }
 
     pub async fn send_bid(&self, auction: Auction, bid: U256) -> Result<()> {
-        let bundle = BundleRequest::new()
-            .set_block(auction.bid_end_block_number.into());
-        let bundle  = self.global_provider.create_auction_bundle(bundle, vec![AuctionBid::new(auction, bid)], true).await?;
-        
+        let bundle = BundleRequest::new().set_block(auction.bid_end_block_number.into());
+        let bundle = self
+            .global_provider
+            .create_auction_bundle(bundle, vec![AuctionBid::new(auction, bid)], true)
+            .await?;
+
         self.global_provider.send_bundle(bundle).await
     }
 }

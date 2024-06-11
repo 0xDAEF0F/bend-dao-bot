@@ -47,6 +47,7 @@ impl PricesClient {
     }
 
     // scaled by 1e18
+    /// returns usd per eth
     pub async fn get_usdt_eth_price(&self) -> Result<U256> {
         let eth_usd_price = self.get_eth_usd_price().await?;
         let usdt_usd_price = self.get_usdt_usd_price().await?;

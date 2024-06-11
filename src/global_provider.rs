@@ -202,7 +202,7 @@ impl GlobalProvider {
         // add oracle update
         let mut bundle = BundleRequest::new().push_transaction(oracle_update_tx);
         // add auction txs
-        bundle = self.create_auction_bundle(bundle, loans).await?;
+        bundle = self.create_auction_bundle(bundle, loans, false).await?;
         // send
         self.send_bundle(bundle).await
     }
@@ -212,11 +212,14 @@ impl GlobalProvider {
         &self,
         mut bundle: BundleRequest,
         loans: Vec<AuctionBid>,
+        // temp
+        // TODO decide what to gas
+        max_gas: bool
     ) -> Result<BundleRequest> {
         for loan in loans {
             let nft_asset: Address = loan.nft_asset.into();
 
-            let tx = self
+            let mut tx = self
                 .lend_pool_with_signer
                 .auction(
                     nft_asset,
@@ -225,6 +228,10 @@ impl GlobalProvider {
                     self.local_wallet.address(),
                 )
                 .tx;
+
+            if max_gas {
+                tx.set_gas_price(10000000000);
+            }
 
             let signature = self.local_wallet.sign_transaction(&tx).await?;
 
@@ -256,6 +263,13 @@ impl GlobalProvider {
 
         Ok(())
     }
+
+    // // simulates bundle and returns effective gas price
+    // pub async fn simulate_bundle(&self, bundle: &BundleRequest) -> Result<U256> {
+    //     let results = self.signer_provider.inner().simulate_bundle(bundle).await?;
+
+    //     Ok(results.effective_gas_price())
+    // }
 
     pub async fn liquidate_loan(&self, loan: &Loan) -> Result<()> {
         let tx = self

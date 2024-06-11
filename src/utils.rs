@@ -81,7 +81,6 @@ where
                 .get_nft_auction_end_time(loan_data.nft_asset, loan_data.nft_token_id)
                 .await?;
             Status::Auction(Auction {
-                current_bidder: loan_data.bidder_address,
                 current_bid: loan_data.bid_price,
                 bid_end_timestamp,
                 nft_asset: loan_data.nft_asset,

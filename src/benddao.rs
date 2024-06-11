@@ -28,7 +28,7 @@ use tokio::time::{Duration, Instant};
 #[allow(dead_code)]
 pub struct BendDao {
     monitored_loans: Vec<U256>, // sorted by `health_factor` in ascending order
-    pending_auctions: PendingAuctions,
+    pub pending_auctions: PendingAuctions,
     global_provider: GlobalProvider,
     prices_client: PricesClient,
     pub slack_bot: SlackClient,
@@ -162,7 +162,7 @@ impl BendDao {
 
         let bundle = self
             .global_provider
-            .create_auction_bundle(BundleRequest::new(), loans_ready_to_auction)
+            .create_auction_bundle(BundleRequest::new(), loans_ready_to_auction, false)
             .await?;
 
         match self.global_provider.send_bundle(bundle).await {
@@ -379,7 +379,41 @@ impl BendDao {
         Ok(())
     }
 
-    pub async fn create_db_cache() -> Result<()> {
-        Ok(())
+    /// bids first auction
+    pub async fn try_bid(&mut self) -> Result<U256> {
+        let auction = self.pending_auctions.pop_first().unwrap();
+
+        let price = self.get_price_in_currency(&auction).await?;
+
+        // TODO: @0xDAEF0F, choose bid price
+        let bid = auction.current_bid * 101 / 100;
+
+        
+        if price  > bid {
+            self.send_bid(auction, auction.current_bid * 101 / 100).await?;
+        }
+
+        info!("bid on {:?} #{} was not profitable for {} as price is: {}", auction.nft_asset, auction.nft_token_id, bid, price);
+
+        Ok(self.pending_auctions.peek().unwrap().bid_end_timestamp)
+    }
+
+    async fn get_price_in_currency(&self, auction: &Auction) -> Result<U256> {
+        let mut price = self.prices_client.get_best_nft_bid(NftAsset::try_from(auction.nft_asset)?).await?;
+
+        if auction.token != ReserveAsset::Weth {
+            let rate = self.prices_client.get_usdt_eth_price().await?;
+            price = rate * price;
+        }
+
+        Ok(price)
+    }
+
+    pub async fn send_bid(&self, auction: Auction, bid: U256) -> Result<()> {
+        let bundle = BundleRequest::new()
+            .set_block(auction.bid_end_block_number.into());
+        let bundle  = self.global_provider.create_auction_bundle(bundle, vec![AuctionBid::new(auction, bid)], true).await?;
+        
+        self.global_provider.send_bundle(bundle).await
     }
 }

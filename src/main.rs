@@ -147,7 +147,31 @@ fn task_three(
     global_provider: GlobalProvider,
 ) -> JoinHandle<Result<()>> {
     tokio::spawn(async move {
-        // let mut stream = global_provider.provider.su
+        // minus 2.5 blocks
+        let mut upcoming_auction = (bend_dao_state.lock().await.pending_auctions.peek().unwrap().bid_end_timestamp) - DELAY_FOR_LAST_BID;
+
+        // loop > stream bc blocks take compute
+        loop {
+            // sleep if need to wait
+            // means we dont have to listen to blocks
+            if upcoming_auction > Instant::now() {
+                sleep_until(upcoming_auction.as_u128().into()).await;
+            } else {
+                tokio::spawn(async move {
+                    // TODO @manasbir
+                    // add liquidations
+                    upcoming_auction = match bend_dao_state.lock().await.try_bid().await {
+                        Ok(auction) => timestamp - DELAY_FOR_LAST_BID,
+                        Err(e) => {
+                            error!("could not bid: {}", e);
+                            // peek is fine bc first instruction in fn is to pop value
+                            bend_dao_state.lock().await.pending_auctions.peek().unwrap().bid_end_timestamp - DELAY_FOR_LAST_BID
+                        }
+                    };
+                });
+            }
+        }
+        
     })
 }
 

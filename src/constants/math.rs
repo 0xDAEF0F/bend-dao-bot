@@ -8,6 +8,6 @@ pub const ONE_HOUR: u64 = 3_600;
 /// seconds in one minute
 pub const ONE_MINUTE: u64 = 60;
 
-pub const DELAY_FOR_LAST_BID: u64 = 24;
+pub const DELAY_FOR_LAST_BID: u64 = 13;
 
 pub const BLOCKS_IN_DAY: u64 = ONE_DAY / 12;

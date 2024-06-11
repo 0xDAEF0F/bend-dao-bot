@@ -40,23 +40,16 @@ async fn main() -> Result<()> {
     // seperated/out of bend dao struct so lock is shorter
     let simulator = Simulator::new(config);
 
-    let task_one_handle = task_one(provider.clone(), bend_dao.clone());
-    let task_two_handle = task_two(
+    let task_one_handle = bend_dao_event_task(provider.clone(), bend_dao.clone());
+    let task_two_handle = nft_oracle_mempool_task(
         provider.clone(),
         bend_dao.clone(),
         global_provider.clone(),
         simulator,
     );
-    let task_three_handle = task_three(bend_dao.clone(), global_provider);
-    let task_four_handle = task_four(bend_dao.clone());
+    let task_three_handle = last_minute_bid_task(bend_dao.clone(), global_provider);
 
-    join_all([
-        task_one_handle,
-        task_two_handle,
-        task_three_handle,
-        task_four_handle,
-    ])
-    .await;
+    join_all([task_one_handle, task_two_handle, task_three_handle]).await;
 
     info!("bot is shutting down");
 
@@ -64,7 +57,7 @@ async fn main() -> Result<()> {
 }
 
 /// listens to benddao events and modifies state
-fn task_one(
+fn bend_dao_event_task(
     provider: Arc<Provider<Ws>>,
     bend_dao_state: Arc<Mutex<BendDao>>,
 ) -> JoinHandle<Result<()>> {
@@ -106,7 +99,7 @@ fn task_one(
 }
 
 // listen to mempool for oracle updates
-fn task_two(
+fn nft_oracle_mempool_task(
     provider: Arc<Provider<Ws>>,
     bend_dao_state: Arc<Mutex<BendDao>>,
     global_provider: GlobalProvider,
@@ -132,7 +125,17 @@ fn task_two(
             bend_dao_state
                 .lock()
                 .await
-                .initiate_auctions_if_any(Some(modded_state))
+                .initiate_auctions_if_any(tx, Some(modded_state))
+                .await?;
+
+            // sleep and wait for two blocks to be mined so that
+            // the refresh includes the latest update
+            sleep(Duration::from_secs(12)).await;
+
+            bend_dao_state
+                .lock()
+                .await
+                .refresh_monitored_loans()
                 .await?;
         }
 
@@ -140,96 +143,30 @@ fn task_two(
     })
 }
 
-/// cahnge to auction monitored
-// TODO @manasbir
-fn task_three(
+/// task that monitors all ongoing auctions
+fn last_minute_bid_task(
     bend_dao_state: Arc<Mutex<BendDao>>,
-    global_provider: GlobalProvider,
+    provider: Arc<Provider<WsClient>>,
 ) -> JoinHandle<Result<()>> {
     tokio::spawn(async move {
-        // minus 2.5 blocks
-        let mut upcoming_auction = (bend_dao_state
-            .lock()
-            .await
-            .pending_auctions
-            .peek()
-            .unwrap()
-            .bid_end_timestamp)
-            - DELAY_FOR_LAST_BID;
+        let mut stream = provider.subscribe_blocks().await?;
 
-        // loop > stream bc blocks take compute
-        loop {
-            // sleep if need to wait
-            // means we dont have to listen to blocks
-            if upcoming_auction > Instant::now() {
-                sleep_until(upcoming_auction.as_u128().into()).await;
-            } else {
-                tokio::spawn(async move {
-                    // TODO @manasbir
-                    // add liquidations
-                    upcoming_auction = match bend_dao_state.lock().await.try_bid().await {
-                        Ok(auction) => timestamp - DELAY_FOR_LAST_BID,
-                        Err(e) => {
-                            error!("could not bid: {}", e);
-                            // peek is fine bc first instruction in fn is to pop value
-                            bend_dao_state
-                                .lock()
-                                .await
-                                .pending_auctions
-                                .peek()
-                                .unwrap()
-                                .bid_end_timestamp
-                                - DELAY_FOR_LAST_BID
-                        }
-                    };
-                });
-            }
-        }
-    })
-}
+        while let Some(block) = stream.next().await {
+            let auctions_due = bend_dao_state
+                .lock()
+                .await
+                .pending_auctions
+                .pop_auctions_due(block.timestamp);
 
-// handle liquidations task
-// can kill after monitoring our active auctions
-// TODO @manasbir
-fn task_four(bend_dao_state: Arc<Mutex<BendDao>>) -> JoinHandle<Result<()>> {
-    tokio::spawn(async move {
-        loop {
-            let maybe_instant = bend_dao_state.lock().await.get_next_liquidation();
-            match maybe_instant {
-                Some((loan_id, instant)) => {
-                    sleep_until(instant).await;
-                    let liq_result = bend_dao_state.lock().await.try_liquidate(loan_id).await;
-                    match liq_result {
-                        Ok(()) => {
-                            let log = "loan was successfully liquidated".to_string();
-                            warn!("{log}");
-                            let _ = bend_dao_state
-                                .lock()
-                                .await
-                                .slack_bot
-                                .send_message(&log)
-                                .await;
-                        }
-                        Err(e) => {
-                            let log = format!("could not liquidate loan: {}", e);
-                            error!("{log}");
-                            let mut lock = bend_dao_state.lock().await;
-                            lock.slack_bot
-                                .send_message(&log)
-                                .await
-                                .unwrap_or_else(|err| {
-                                    error!("could not send slack message: {}", err)
-                                });
-                            // do not try to liquidate again
-                            lock.pending_auctions.remove(&loan_id);
-                        }
-                    }
-                }
-                None => {
-                    info!("no pending future auctions. sleeping for 6 hours.");
-                    sleep(Duration::from_secs(ONE_HOUR * 6)).await;
-                }
+            if auctions_due.is_empty() {
+                continue;
             }
+
+            // check profitability
+
+            // submit the bundle to `bid`
+
+            // create a new thread and sleep and liquidate
         }
     })
 }

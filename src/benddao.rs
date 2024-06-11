@@ -3,27 +3,22 @@ pub mod status;
 
 use self::status::Status;
 use crate::{
-    constants::*,
     global_provider::GlobalProvider,
     prices_client::PricesClient,
     types::*,
     utils::{calculate_bidding_amount, get_repaid_defaulted_loans, save_repaid_defaulted_loans},
     AuctionFilter, Config, LiquidateFilter, RedeemFilter,
 };
-use anyhow::{anyhow, bail, Result};
+use anyhow::Result;
 use ethers::{
     providers::{Middleware, Provider, Ws},
-    types::{spoof::State, H160, U256, U64},
+    types::{spoof::State, Transaction, U256},
 };
 use ethers_flashbots::BundleRequest;
 use loan::{Loan, NftAsset, ReserveAsset};
 use log::{error, info, warn};
 use messenger_rs::slack_hook::SlackClient;
-use std::{
-    collections::{self, BTreeSet, HashMap},
-    sync::Arc,
-};
-use tokio::time::{Duration, Instant};
+use std::{collections::BTreeSet, sync::Arc};
 
 #[allow(dead_code)]
 pub struct BendDao {
@@ -63,10 +58,10 @@ impl BendDao {
 
         let auction = Auction {
             current_bid: evt.bid_price,
-            current_bidder: evt.user,
             nft_asset: evt.nft_asset,
             nft_token_id: evt.nft_token_id,
             bid_end_timestamp,
+            reserve_asset: ReserveAsset::try_from(evt.reserve).unwrap(),
         };
 
         self.pending_auctions.add_update_auction(auction);
@@ -85,7 +80,8 @@ impl BendDao {
     }
 
     pub async fn react_to_liquidation(&mut self, evt: LiquidateFilter) {
-        self.pending_auctions.remove_auction(evt.loan_id);
+        self.pending_auctions
+            .remove_auction(evt.nft_asset, evt.nft_token_id);
 
         let nft_asset = NftAsset::try_from(evt.nft_asset).unwrap();
         let msg = format!(
@@ -96,55 +92,11 @@ impl BendDao {
         self.slack_bot.send_message(&msg).await.ok();
     }
 
-    // THIS WILL GET DEPRECATED. IT IS DOING TOO MUCH.
-    pub async fn update_loan_in_system(&mut self, loan_id: U256) -> Result<()> {
-        let loan = match self.global_provider.get_updated_loan(loan_id).await? {
-            None => return Ok(()),
-            Some(l) => l,
-        };
-
-        if !loan.nft_asset.is_allowed_in_production() {
-            return Ok(());
-        }
-
-        match loan.status {
-            Status::RepaidDefaulted => {
-                // would be nice to update the data store, too but it's not that important.
-                // we can do that in the next synchronization of `build_all_loans`
-                self.monitored_loans
-                    .get_mut(&H160::from(loan.nft_asset))
-                    .unwrap()
-                    .retain(|x| x != &loan_id);
-                return Ok(());
-            }
-            Status::Auction(auction) => {
-                // remove from the system. if the loan is redeemed it will be added back
-                self.monitored_loans
-                    .get_mut(&H160::from(loan.nft_asset))
-                    .unwrap()
-                    .retain(|x| x != &loan_id);
-
-                if !auction.is_ours(&self.global_provider.local_wallet) {
-                    self.pending_auctions.remove(&loan_id);
-                }
-                let msg = format!("auction happening - {}", loan);
-                let _ = self.slack_bot.send_message(&msg).await;
-                return Ok(());
-            }
-            Status::Active => {
-                // TODO: send a notification to our slack to signal that they redeemed us
-                // if its in our pending auctions we should remove it
-                self.pending_auctions.remove(&loan_id);
-            }
-            Status::Created => {
-                info!("Status::Created is not handled");
-            }
-        }
-
-        Ok(())
-    }
-
-    pub async fn initiate_auctions_if_any(&mut self, modded_state: Option<State>) -> Result<()> {
+    pub async fn initiate_auctions_if_any(
+        &mut self,
+        nft_oracle_tx: Transaction,
+        modded_state: Option<State>,
+    ) -> Result<()> {
         let iter = self.monitored_loans.iter().map(|x| x.as_u64());
         let monitored_loans = self
             .global_provider
@@ -160,9 +112,12 @@ impl BendDao {
             return Ok(());
         }
 
+        let mut bundle = BundleRequest::new();
+        bundle.add_transaction(nft_oracle_tx);
+
         let bundle = self
             .global_provider
-            .create_auction_bundle(BundleRequest::new(), loans_ready_to_auction, false)
+            .create_auction_bundle(bundle, loans_ready_to_auction, false)
             .await?;
 
         match self.global_provider.send_bundle(bundle).await {
@@ -236,61 +191,6 @@ impl BendDao {
         }
 
         loans_for_auction
-    }
-
-    pub fn get_next_liquidation(&self) -> Option<(U256, Instant)> {
-        self.pending_auctions
-            .iter()
-            .min_by(|a, b| a.1.cmp(b.1))
-            .map(|(&loan_id, &instant)| (loan_id, instant))
-    }
-
-    /// 1] has the auction ended?
-    /// 2] do we have enough eth to call liquidate?
-    /// 3] did we actually win the auction?
-    /// 4] is the bid we pushed enough to pay the total debt?
-    pub async fn try_liquidate(&mut self, loan_id: U256) -> Result<()> {
-        let loan = self
-            .global_provider
-            .get_updated_loan(loan_id)
-            .await?
-            .ok_or_else(|| anyhow!("benddao.rs - 265"))?;
-
-        let auction: Auction;
-        if let Status::Auction(auction_) = loan.status {
-            auction = auction_;
-        } else {
-            bail!("{} is not in auction", loan)
-        }
-
-        if !auction.is_ours(&self.global_provider.local_wallet) {
-            bail!("auction is not ours")
-        }
-
-        let has_auction_ended = self
-            .global_provider
-            .has_auction_ended(loan.nft_asset, loan.nft_token_id)
-            .await?;
-
-        if !has_auction_ended {
-            bail!("auction has not ended yet")
-        }
-
-        let balances = self.global_provider.get_balances().await?;
-
-        if balances.eth < U256::exp10(16) {
-            bail!("not enough ETH balance to liquidate")
-        }
-
-        if auction.current_bid < loan.total_debt {
-            bail!("can't liquidate because best_bid < total_debt")
-        }
-
-        self.global_provider.liquidate_loan(&loan).await?;
-
-        self.pending_auctions.remove(&loan.loan_id);
-
-        Ok(())
     }
 
     pub async fn refresh_monitored_loans(&mut self) -> Result<()> {
@@ -407,7 +307,7 @@ impl BendDao {
             .get_best_nft_bid(NftAsset::try_from(auction.nft_asset)?)
             .await?;
 
-        if auction.token != ReserveAsset::Weth {
+        if auction.reserve_asset != ReserveAsset::Weth {
             let rate = self.prices_client.get_usdt_eth_price().await?;
             price = rate * price;
         }

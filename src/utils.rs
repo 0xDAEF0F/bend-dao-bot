@@ -72,6 +72,14 @@ where
         lend_pool_loan.get_loan(loan_id).await?
     };
 
+    let reserve_asset = match ReserveAsset::try_from(loan_data.reserve_asset) {
+        Ok(reserve_asset) => reserve_asset,
+        Err(e) => {
+            debug!("{e}");
+            return Ok(None);
+        }
+    };
+
     let status = match loan_data.state {
         0 => return Ok(None),
         1 => Status::Created,
@@ -83,20 +91,13 @@ where
             Status::Auction(Auction {
                 current_bid: loan_data.bid_price,
                 bid_end_timestamp,
+                reserve_asset,
                 nft_asset: loan_data.nft_asset,
                 nft_token_id: loan_data.nft_token_id,
             })
         }
         4 | 5 => Status::RepaidDefaulted,
         _ => panic!("invalid state"),
-    };
-
-    let reserve_asset = match ReserveAsset::try_from(loan_data.reserve_asset) {
-        Ok(reserve_asset) => reserve_asset,
-        Err(e) => {
-            debug!("{e}");
-            return Ok(None);
-        }
     };
 
     let nft_asset = match NftAsset::try_from(loan_data.nft_asset) {

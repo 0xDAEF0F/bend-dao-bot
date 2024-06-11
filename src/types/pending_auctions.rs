@@ -1,6 +1,5 @@
-use crate::constants::DELAY_FOR_LAST_BID;
-
 use super::Auction;
+use crate::constants::DELAY_FOR_LAST_BID;
 use ethers::types::*;
 
 // ideally we dont do this
@@ -54,10 +53,10 @@ impl PendingAuctions {
         }
     }
 
-    pub fn pop_auctions(&mut self, timestamp: U256) -> Vec<Auction> {
+    pub fn pop_auctions_due(&mut self, current_timestamp: U256) -> Vec<Auction> {
         let mut auctions = vec![];
         while let Some(auction) = self.peek() {
-            if auction.bid_end_timestamp < timestamp + DELAY_FOR_LAST_BID {
+            if auction.bid_end_timestamp > current_timestamp + DELAY_FOR_LAST_BID {
                 break;
             }
             auctions.push(self.pop_first().unwrap());

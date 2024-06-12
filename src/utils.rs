@@ -93,6 +93,7 @@ where
                 .await?;
             Status::Auction(Auction {
                 current_bid: loan_data.bid_price,
+                current_bidder: loan_data.bidder_address,
                 bid_end_timestamp,
                 reserve_asset,
                 nft_asset: loan_data.nft_asset,

@@ -58,6 +58,7 @@ impl BendDao {
 
         let auction = Auction {
             current_bid: evt.bid_price,
+            current_bidder: evt.on_behalf_of,
             nft_asset: evt.nft_asset,
             nft_token_id: evt.nft_token_id,
             bid_end_timestamp,
@@ -135,8 +136,6 @@ impl BendDao {
                 let _ = self.slack_bot.send_message("failed to start bundle").await;
             }
         }
-
-        self.notify_and_log_monitored_loans().await?;
 
         Ok(())
     }

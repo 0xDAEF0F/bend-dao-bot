@@ -89,7 +89,7 @@ fn bend_dao_event_task(
                     }
                 }
                 LendPoolEvents::LiquidateFilter(evt) => {
-                    if let Ok(nft_asset) = NftAsset::try_from(evt.nft_asset) {
+                    if let Ok(_nft_asset) = NftAsset::try_from(evt.nft_asset) {
                         bd_lock.react_to_liquidation(evt).await;
                     }
                 }
@@ -165,16 +165,21 @@ fn last_minute_bid_task(
                 .pending_auctions
                 .pop_auctions_due(block.timestamp);
 
-            if auctions_due.is_empty() {
+            // TODO: We need to make sure we also liquidate ours. Or ignore if they outbid us.
+            let (ours, not_ours): (Vec<_>, Vec<_>) = auctions_due
+                .into_iter()
+                .partition(|auction| auction.current_bidder == OUR_EOA_ADDRESS.into());
+
+            if not_ours.is_empty() {
                 continue;
             }
 
-            let bundles = bend_dao_state.lock().await.try_bids(&auctions_due).await?;
+            let bundles = bend_dao_state.lock().await.try_bids(&not_ours).await?;
 
             for (i, bundle) in bundles.into_iter().enumerate() {
                 let global_provider_clone = global_provider.clone();
                 let slack_clone = slack.clone();
-                let auction = auctions_due[i].clone();
+                let auction = not_ours[i].clone();
                 tokio::spawn(async move {
                     let status = match {
                         global_provider_clone

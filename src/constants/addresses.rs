@@ -1,5 +1,8 @@
 use hex_literal::hex;
 
+// internal
+pub const OUR_EOA_ADDRESS: [u8; 20] = hex!("a28d40f507d39584c6f43d999f77d41ab86a3a5c");
+
 // bend dao
 pub const LEND_POOL: [u8; 20] = hex!("70b97a0da65c15dfb0ffa02aee6fa36e507c2762");
 pub const LEND_POOL_LOAN: [u8; 20] = hex!("5f6ac80cdb9e87f3cfa6a90e5140b9a16a361d5c");

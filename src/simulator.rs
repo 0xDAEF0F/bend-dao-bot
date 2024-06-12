@@ -22,7 +22,7 @@ impl Simulator {
     }
 
     /// Simulates a transaction and returns the updadated twaps
-    pub async fn simulate_twap_changes(&self, tx: Transaction) -> Result<Vec<(H160, U256)>> {
+    pub async fn simulate_twap_changes(&self, tx: &Transaction) -> Result<Vec<(H160, U256)>> {
         let req = &Req {
             id: 1,
             jsonrpc: "2.0".to_string(),
@@ -30,7 +30,7 @@ impl Simulator {
             params: vec![TxObject {
                 from: tx.from,
                 to: tx.to.unwrap(),
-                data: tx.input,
+                data: tx.input.clone(),
                 value: tx.value,
             }],
         };

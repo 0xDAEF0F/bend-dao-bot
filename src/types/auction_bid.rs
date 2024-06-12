@@ -9,7 +9,7 @@ pub struct AuctionBid {
 }
 
 impl AuctionBid {
-    pub fn new(auction: Auction, bid_price: U256) -> Self {
+    pub fn new(auction: &Auction, bid_price: U256) -> Self {
         Self {
             nft_asset: auction.nft_asset,
             nft_token_id: auction.nft_token_id,

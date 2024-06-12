@@ -120,7 +120,9 @@ impl BendDao {
             .create_auction_bundle(bundle, loans_ready_to_auction, false)
             .await?;
 
-        match self.global_provider.send_bundle(bundle).await {
+        // TODO
+        // handle outside struct for shorter locks
+        match self.global_provider.send_and_handle_bundle(bundle).await {
             Ok(()) => {
                 info!("started an auction bundle");
                 let _ = self
@@ -280,25 +282,29 @@ impl BendDao {
     }
 
     /// bids first auction
-    pub async fn try_bid(&mut self) -> Result<U256> {
-        let auction = self.pending_auctions.pop_first().unwrap();
+    pub async fn try_bids(&mut self, auctions: &Vec<Auction>) -> Result<Vec<BundleRequest>> {
+        let mut bundles = Vec::new();
 
-        let price = self.get_price_in_currency(&auction).await?;
+        for auction in auctions {
+            let price = self.get_price_in_currency(&auction).await?;
 
-        // TODO: @0xDAEF0F, choose bid price
-        let bid = auction.current_bid * 101 / 100;
+            // TODO: @0xDAEF0F, choose bid price
+            let bid = auction.current_bid * 101 / 100;
 
-        if price > bid {
-            self.send_bid(auction, auction.current_bid * 101 / 100)
-                .await?;
+            if price > bid {
+                // not sending as one bundle bc we may get a revert chain
+                // if one bid get frontrun, all bids will revert
+                bundles.push(self.send_bid(auction, auction.current_bid * 101 / 100)
+                    .await?)
+            } else {
+                info!(
+                    "bid on {:?} #{} was not profitable for {} as price is: {}",
+                    auction.nft_asset, auction.nft_token_id, bid, price
+                );
+            }
         }
 
-        info!(
-            "bid on {:?} #{} was not profitable for {} as price is: {}",
-            auction.nft_asset, auction.nft_token_id, bid, price
-        );
-
-        Ok(self.pending_auctions.peek().unwrap().bid_end_timestamp)
+        Ok(bundles)
     }
 
     async fn get_price_in_currency(&self, auction: &Auction) -> Result<U256> {
@@ -315,13 +321,11 @@ impl BendDao {
         Ok(price)
     }
 
-    pub async fn send_bid(&self, auction: Auction, bid: U256) -> Result<()> {
-        let bundle = BundleRequest::new().set_block(auction.bid_end_block_number.into());
-        let bundle = self
+    async fn send_bid(&self, auction: &Auction, bid: U256) -> Result<BundleRequest> {
+        let bundle = BundleRequest::new().set_max_timestamp(auction.bid_end_timestamp.as_u64()).set_min_timestamp(auction.bid_end_timestamp.as_u64() - 22);
+        self
             .global_provider
             .create_auction_bundle(bundle, vec![AuctionBid::new(auction, bid)], true)
-            .await?;
-
-        self.global_provider.send_bundle(bundle).await
+            .await
     }
 }

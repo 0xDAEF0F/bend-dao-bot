@@ -7,11 +7,14 @@ use crate::{
     LendPool, LendPoolLoan, LoanData,
 };
 use anyhow::Result;
+use ethers::providers::{Middleware, Ws};
+use ethers::signers::Signer;
 use ethers::{
     providers::{JsonRpcClient, Provider, RawCall},
     types::{spoof::State, U256},
 };
-use log::debug;
+use ethers_flashbots::{FlashbotsMiddlewareError, PendingBundle, PendingBundleError};
+use log::{debug, error, info};
 use std::collections::BTreeSet;
 use tokio::{
     fs::File,
@@ -131,4 +134,25 @@ where
     };
 
     Ok(Some(loan))
+}
+
+
+pub async fn handle_sent_bundle<M: Middleware, S: Signer, P: JsonRpcClient>(results: SentBundle<'_, M, S, P>) -> Result<()> {
+    // realistically only needs 1 check
+    for result in results {
+        match result {
+            Ok(pending_bundle) => match pending_bundle.await {
+                Ok(bundle_hash) => info!(
+                    "Bundle with hash {:?} was included in target block",
+                    bundle_hash.unwrap_or_default()
+                ),
+                Err(PendingBundleError::BundleNotIncluded) => {
+                    error!("Bundle was not included in target block.")
+                }
+                Err(e) => error!("An error occured: {}", e),
+            },
+            Err(e) => error!("An error occured: {}", e),
+        }
+    }
+    Ok(())
 }

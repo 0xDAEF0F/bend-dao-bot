@@ -1,8 +1,9 @@
+use ethers_flashbots::FlashbotsMiddlewareError;
 use crate::{
     benddao::loan::{Loan, NftAsset},
     constants::*,
     types::*,
-    utils::get_loan_data,
+    utils::{get_loan_data, handle_sent_bundle},
     Config, Erc20, LendPool, LendPoolLoan, Weth,
 };
 use anyhow::{bail, Result};
@@ -11,9 +12,9 @@ use ethers::{
     middleware::SignerMiddleware,
     providers::{Middleware, Provider, Ws},
     signers::{coins_bip39::English, LocalWallet, MnemonicBuilder, Signer, Wallet},
-    types::{spoof::State, Address, Transaction, U256},
+    types::{spoof::State, Address, Res, Transaction, U256},
 };
-use ethers_flashbots::{BroadcasterMiddleware, BundleRequest, PendingBundleError};
+use ethers_flashbots::{BroadcasterMiddleware, BundleHash, BundleRequest, PendingBundle, PendingBundleError};
 use futures::future::join_all;
 use log::{debug, error, info};
 use std::sync::Arc;
@@ -198,13 +199,11 @@ impl GlobalProvider {
         &self,
         loans: Vec<AuctionBid>,
         oracle_update_tx: Transaction,
-    ) -> Result<()> {
+    ) -> Result<BundleRequest> {
         // add oracle update
-        let mut bundle = BundleRequest::new().push_transaction(oracle_update_tx);
+        let bundle = BundleRequest::new().push_transaction(oracle_update_tx);
         // add auction txs
-        bundle = self.create_auction_bundle(bundle, loans, false).await?;
-        // send
-        self.send_bundle(bundle).await
+        self.create_auction_bundle(bundle, loans, false).await
     }
 
     /// creates a vec of tx's for auction based off loans
@@ -230,7 +229,7 @@ impl GlobalProvider {
                 .tx;
 
             if max_gas {
-                tx.set_gas_price(10000000000);
+                tx.set_gas_price(10);
             }
 
             let signature = self.local_wallet.sign_transaction(&tx).await?;
@@ -241,27 +240,12 @@ impl GlobalProvider {
         Ok(bundle)
     }
 
-    pub async fn send_bundle(&self, bundle: BundleRequest) -> Result<()> {
-        let results = self.signer_provider.inner().send_bundle(&bundle).await?;
+    pub async fn send_and_handle_bundle(&self, bundle: BundleRequest) -> 
+    Result<()> 
+    {
+        let pending_bundle = self.signer_provider.inner().send_bundle(&bundle).await?;
 
-        // realistically only needs 1 check
-        for result in results {
-            match result {
-                Ok(pending_bundle) => match pending_bundle.await {
-                    Ok(bundle_hash) => info!(
-                        "Bundle with hash {:?} was included in target block",
-                        bundle_hash.unwrap_or_default()
-                    ),
-                    Err(PendingBundleError::BundleNotIncluded) => {
-                        error!("Bundle was not included in target block.")
-                    }
-                    Err(e) => error!("An error occured: {}", e),
-                },
-                Err(e) => error!("An error occured: {}", e),
-            }
-        }
-
-        Ok(())
+        handle_sent_bundle(pending_bundle).await
     }
 
     // // simulates bundle and returns effective gas price
@@ -271,10 +255,10 @@ impl GlobalProvider {
     //     Ok(results.effective_gas_price())
     // }
 
-    pub async fn liquidate_loan(&self, loan: &Loan) -> Result<()> {
+    pub async fn liquidate_loan(&self, auction: &Auction) -> Result<()> {
         let tx = self
             .lend_pool_with_signer
-            .liquidate(loan.nft_asset.into(), loan.nft_token_id, U256::zero())
+            .liquidate(auction.nft_asset.into(), auction.nft_token_id, U256::zero())
             .tx;
 
         let reciept = self
@@ -283,7 +267,7 @@ impl GlobalProvider {
             .await?
             .log_msg(format!(
                 "executing liquidation for {:?} r##{}",
-                loan.nft_asset, loan.nft_token_id
+                auction.nft_asset, auction.nft_token_id
             ))
             .await?;
 

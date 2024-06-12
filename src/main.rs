@@ -1,10 +1,11 @@
 use anyhow::Result;
-use bend_dao_collector::benddao::loan::NftAsset;
+use bend_dao_collector::benddao::loan::{Loan, NftAsset};
 use bend_dao_collector::benddao::BendDao;
 use bend_dao_collector::global_provider::GlobalProvider;
 use bend_dao_collector::lend_pool::LendPool;
 use bend_dao_collector::simulator::Simulator;
 use bend_dao_collector::spoofer::get_new_state_with_twaps_modded;
+use bend_dao_collector::utils::handle_sent_bundle;
 use bend_dao_collector::{constants::*, global_provider};
 use bend_dao_collector::{Config, LendPoolEvents};
 use ethers::providers::Middleware;
@@ -14,6 +15,7 @@ use ethers::{
 };
 use futures::future::join_all;
 use log::{error, info, warn};
+use messenger_rs::slack_hook::SlackClient;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
@@ -33,6 +35,8 @@ async fn main() -> Result<()> {
     // KILL THIS
     let global_provider = bend_dao.get_global_provider();
 
+    let slack = bend_dao.slack_bot.clone();
+
     bend_dao.refresh_monitored_loans().await?;
 
     let bend_dao = Arc::new(Mutex::new(bend_dao));
@@ -47,7 +51,7 @@ async fn main() -> Result<()> {
         global_provider.clone(),
         simulator,
     );
-    let task_three_handle = last_minute_bid_task(bend_dao.clone(), global_provider);
+    let task_three_handle = last_minute_bid_task(bend_dao.clone(), global_provider, Arc::new(slack));
 
     join_all([task_one_handle, task_two_handle, task_three_handle]).await;
 
@@ -118,7 +122,7 @@ fn nft_oracle_mempool_task(
                 continue;
             }
 
-            let twaps = simulator.simulate_twap_changes(tx).await?;
+            let twaps = simulator.simulate_twap_changes(&tx).await?;
 
             let modded_state = get_new_state_with_twaps_modded(twaps);
 
@@ -128,7 +132,7 @@ fn nft_oracle_mempool_task(
                 .initiate_auctions_if_any(tx, Some(modded_state))
                 .await?;
 
-            // sleep and wait for two blocks to be mined so that
+            // sleep and wait for one block to be mined so that
             // the refresh includes the latest update
             sleep(Duration::from_secs(12)).await;
 
@@ -146,9 +150,11 @@ fn nft_oracle_mempool_task(
 /// task that monitors all ongoing auctions
 fn last_minute_bid_task(
     bend_dao_state: Arc<Mutex<BendDao>>,
-    provider: Arc<Provider<WsClient>>,
+    global_provider: GlobalProvider,
+    slack: Arc<SlackClient>,
 ) -> JoinHandle<Result<()>> {
     tokio::spawn(async move {
+        let provider = global_provider.provider.clone();
         let mut stream = provider.subscribe_blocks().await?;
 
         while let Some(block) = stream.next().await {
@@ -162,11 +168,55 @@ fn last_minute_bid_task(
                 continue;
             }
 
-            // check profitability
+            let bundles = bend_dao_state.lock().await.try_bids(&auctions_due).await?;
 
-            // submit the bundle to `bid`
+            for (i, bundle) in bundles.into_iter().enumerate() {
+                let global_provider_clone = global_provider.clone();
+                let slack_clone = slack.clone();
+                let auction = auctions_due[i].clone();
+                tokio::spawn(async move {
+                    let status = match {
+                        global_provider_clone.signer_provider.inner().send_bundle(&bundle).await
+                    } {
+                        Ok(sent_bundle) => {
+                            match handle_sent_bundle(sent_bundle).await {
+                                Ok(_) => {
+                                    let message = format!("bid for {:?} #{:?}sent successfully", auction.nft_asset, auction.nft_token_id);
+                                    info!("{}", message);
+                                    if let Err(e) = slack_clone.send_message(message).await {
+                                        error!("failed to send slack message {e}");
+                                    }
 
-            // create a new thread and sleep and liquidate
+                                    sleep(Duration::from_secs(24)).await;
+                                    match global_provider_clone.liquidate_loan(&auction).await {
+                                        Ok(_) => {
+                                            let message = format!("liquidated {:?} #{:?} successfully", auction.nft_asset, auction.nft_token_id);
+                                            info!("{}", message);
+                                            if let Err(e) = slack_clone.send_message(message).await {
+                                                error!("failed to send slack message {e}");
+                                            }
+                                        }
+                                        Err(e) => {
+                                            error!("error sending bundle: {}", e);
+                                        }
+                                    }
+                                    return;
+                                }
+                                Err(e) => {error!("error sending bundle: {}", e);
+                                return;}
+                            }
+                        },
+                        Err(e) => {
+                            error!("error sending bundle: {}", e);
+                            return;
+                        }
+                    };
+                    
+
+                });
+            }
         }
+
+        Ok(())
     })
 }

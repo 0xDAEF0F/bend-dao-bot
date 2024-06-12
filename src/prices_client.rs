@@ -1,8 +1,12 @@
+use std::collections::HashMap;
+
+use crate::constants::STBAYC;
 use crate::reservoir::floor_response::CollectionBidsResponse;
 use crate::Config;
 use crate::{benddao::loan::NftAsset, coinmarketcap::price_response::PriceResponse};
 use anyhow::Result;
 use ethers::types::{Address, U256};
+use futures::future::try_join_all;
 use reqwest::{header::HeaderValue, Client};
 use url::Url;
 
@@ -22,6 +26,33 @@ impl PricesClient {
             coinmarketcap_api_key: config.coinmarketcap_api_key,
             http_client: Client::new(),
         }
+    }
+
+    pub async fn get_nft_eth_prices(&self) -> Result<HashMap<Address, U256>> {
+        let mut hm = HashMap::new();
+
+        let mut handles = Vec::new();
+
+        let addresses_to_query = NftAsset::get_all_allowed_nft_assets();
+
+        for addr in addresses_to_query {
+            let client = self.http_client.clone();
+            let reservoir_api_key = self.reservoir_api_key.clone();
+            let future = tokio::spawn(async move {
+                let price = get_best_nft_bid(client, addr, &reservoir_api_key).await?;
+                anyhow::Ok(price)
+            });
+            handles.push(future);
+        }
+
+        let result = try_join_all(handles).await?;
+
+        for res in result {
+            let (addr, price) = res?;
+            hm.insert(addr, price);
+        }
+
+        Ok(hm)
     }
 
     // price in ETH (1e18)
@@ -96,11 +127,56 @@ impl PricesClient {
     }
 }
 
+// price in ETH (1e18)
+async fn get_best_nft_bid(
+    client: Client,
+    nft_asset: NftAsset,
+    reservoir_api_key: &str,
+) -> Result<(Address, U256)> {
+    let nft_asset = match nft_asset {
+        NftAsset::StBayc => NftAsset::Bayc,
+        nft_asset => nft_asset,
+    };
+    let mut url: Url = RESERVOIR_BASE_URL.parse()?;
+    let path = format!("collections/{:?}/bids/v1", Address::from(nft_asset));
+    url.set_path(&path);
+    url.set_query(Some("type=collection")); // collection wide bids
+
+    let res = client
+        .get(url)
+        .header("x-api-key", HeaderValue::from_str(reservoir_api_key)?)
+        .send()
+        .await?;
+    let res: CollectionBidsResponse = res.json().await?;
+
+    Ok((Address::from(nft_asset), res.get_best_bid()?))
+}
+
 #[cfg(test)]
 mod tests {
+    use super::*;
     use crate::{benddao::loan::Loan, global_provider::GlobalProvider};
 
-    use super::*;
+    #[tokio::test]
+    async fn test_get_all_nft_prices() -> Result<()> {
+        dotenv::dotenv().ok();
+
+        let config_vars: Config = envy::from_env()?;
+        let client = PricesClient::new(config_vars);
+
+        let start = chrono::Local::now();
+
+        let prices = client.get_nft_eth_prices().await?;
+
+        let end = chrono::Local::now();
+
+        let duration = end - start;
+
+        println!("duration: {:?}", duration);
+        println!("{:?}", prices);
+
+        Ok(())
+    }
 
     #[tokio::test]
     async fn test_get_best_nft_bid() -> Result<()> {

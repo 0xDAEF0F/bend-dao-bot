@@ -181,7 +181,7 @@ fn last_minute_bid_task(
                 let slack_clone = slack.clone();
                 let auction = not_ours[i].clone();
                 tokio::spawn(async move {
-                    let status = match {
+                    match {
                         global_provider_clone
                             .signer_provider
                             .inner()

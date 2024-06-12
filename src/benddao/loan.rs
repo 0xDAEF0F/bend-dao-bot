@@ -111,6 +111,15 @@ pub enum NftAsset {
 }
 
 impl NftAsset {
+    pub fn get_all_allowed_nft_assets() -> Vec<NftAsset> {
+        vec![
+            NftAsset::CryptoPunks,
+            NftAsset::Bayc,
+            NftAsset::Azuki,
+            NftAsset::PudgyPenguins,
+        ]
+    }
+
     pub fn is_allowed_in_production(&self) -> bool {
         match self {
             NftAsset::CryptoPunks => true,

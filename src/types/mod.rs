@@ -13,5 +13,5 @@ use ethers::{
 use ethers_flashbots::{FlashbotsMiddlewareError, PendingBundle};
 pub use pending_auctions::*;
 
-pub type SentBundle<'a, M: Middleware, S: Signer, P: JsonRpcClient> =
+pub type SentBundle<'a, M, S, P> =
     Vec<Result<PendingBundle<'a, P>, FlashbotsMiddlewareError<M, S>>>;

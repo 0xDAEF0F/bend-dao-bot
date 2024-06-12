@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::time::Instant;
 
 use crate::constants::STBAYC;
 use crate::reservoir::floor_response::CollectionBidsResponse;
@@ -40,6 +41,7 @@ impl PricesClient {
             let reservoir_api_key = self.reservoir_api_key.clone();
             let future = tokio::spawn(async move {
                 let price = get_best_nft_bid(client, addr, &reservoir_api_key).await?;
+                
                 anyhow::Ok(price)
             });
             handles.push(future);
@@ -140,13 +142,14 @@ async fn get_best_nft_bid(
     let mut url: Url = RESERVOIR_BASE_URL.parse()?;
     let path = format!("collections/{:?}/bids/v1", Address::from(nft_asset));
     url.set_path(&path);
-    url.set_query(Some("type=collection")); // collection wide bids
+    url.set_query(Some("type=collection&limit=1&displayCurrency=0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2")); // collection wide bids
 
     let res = client
         .get(url)
         .header("x-api-key", HeaderValue::from_str(reservoir_api_key)?)
         .send()
         .await?;
+
     let res: CollectionBidsResponse = res.json().await?;
 
     Ok((Address::from(nft_asset), res.get_best_bid()?))
@@ -172,7 +175,7 @@ mod tests {
 
         let duration = end - start;
 
-        println!("duration: {:?}", duration);
+        println!("duration: {:?} ms", duration.num_milliseconds());
         println!("{:?}", prices);
 
         Ok(())

@@ -136,8 +136,9 @@ where
     Ok(Some(loan))
 }
 
-
-pub async fn handle_sent_bundle<M: Middleware, S: Signer, P: JsonRpcClient>(results: SentBundle<'_, M, S, P>) -> Result<()> {
+pub async fn handle_sent_bundle<M: Middleware, S: Signer, P: JsonRpcClient>(
+    results: SentBundle<'_, M, S, P>,
+) -> Result<()> {
     // realistically only needs 1 check
     for result in results {
         match result {

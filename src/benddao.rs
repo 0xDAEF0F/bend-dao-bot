@@ -294,8 +294,10 @@ impl BendDao {
             if price > bid {
                 // not sending as one bundle bc we may get a revert chain
                 // if one bid get frontrun, all bids will revert
-                bundles.push(self.send_bid(auction, auction.current_bid * 101 / 100)
-                    .await?)
+                bundles.push(
+                    self.send_bid(auction, auction.current_bid * 101 / 100)
+                        .await?,
+                )
             } else {
                 info!(
                     "bid on {:?} #{} was not profitable for {} as price is: {}",
@@ -322,9 +324,10 @@ impl BendDao {
     }
 
     async fn send_bid(&self, auction: &Auction, bid: U256) -> Result<BundleRequest> {
-        let bundle = BundleRequest::new().set_max_timestamp(auction.bid_end_timestamp.as_u64()).set_min_timestamp(auction.bid_end_timestamp.as_u64() - 22);
-        self
-            .global_provider
+        let bundle = BundleRequest::new()
+            .set_max_timestamp(auction.bid_end_timestamp.as_u64())
+            .set_min_timestamp(auction.bid_end_timestamp.as_u64() - 22);
+        self.global_provider
             .create_auction_bundle(bundle, vec![AuctionBid::new(auction, bid)], true)
             .await
     }

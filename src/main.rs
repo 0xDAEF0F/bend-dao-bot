@@ -51,7 +51,8 @@ async fn main() -> Result<()> {
         global_provider.clone(),
         simulator,
     );
-    let task_three_handle = last_minute_bid_task(bend_dao.clone(), global_provider, Arc::new(slack));
+    let task_three_handle =
+        last_minute_bid_task(bend_dao.clone(), global_provider, Arc::new(slack));
 
     join_all([task_one_handle, task_two_handle, task_three_handle]).await;
 
@@ -176,34 +177,44 @@ fn last_minute_bid_task(
                 let auction = auctions_due[i].clone();
                 tokio::spawn(async move {
                     let status = match {
-                        global_provider_clone.signer_provider.inner().send_bundle(&bundle).await
+                        global_provider_clone
+                            .signer_provider
+                            .inner()
+                            .send_bundle(&bundle)
+                            .await
                     } {
-                        Ok(sent_bundle) => {
-                            match handle_sent_bundle(sent_bundle).await {
-                                Ok(_) => {
-                                    let message = format!("bid for {:?} #{:?}sent successfully", auction.nft_asset, auction.nft_token_id);
-                                    info!("{}", message);
-                                    if let Err(e) = slack_clone.send_message(message).await {
-                                        error!("failed to send slack message {e}");
-                                    }
-
-                                    sleep(Duration::from_secs(24)).await;
-                                    match global_provider_clone.liquidate_loan(&auction).await {
-                                        Ok(_) => {
-                                            let message = format!("liquidated {:?} #{:?} successfully", auction.nft_asset, auction.nft_token_id);
-                                            info!("{}", message);
-                                            if let Err(e) = slack_clone.send_message(message).await {
-                                                error!("failed to send slack message {e}");
-                                            }
-                                        }
-                                        Err(e) => {
-                                            error!("error sending bundle: {}", e);
-                                        }
-                                    }
-                                    return;
+                        Ok(sent_bundle) => match handle_sent_bundle(sent_bundle).await {
+                            Ok(_) => {
+                                let message = format!(
+                                    "bid for {:?} #{:?}sent successfully",
+                                    auction.nft_asset, auction.nft_token_id
+                                );
+                                info!("{}", message);
+                                if let Err(e) = slack_clone.send_message(message).await {
+                                    error!("failed to send slack message {e}");
                                 }
-                                Err(e) => {error!("error sending bundle: {}", e);
-                                return;}
+
+                                sleep(Duration::from_secs(24)).await;
+                                match global_provider_clone.liquidate_loan(&auction).await {
+                                    Ok(_) => {
+                                        let message = format!(
+                                            "liquidated {:?} #{:?} successfully",
+                                            auction.nft_asset, auction.nft_token_id
+                                        );
+                                        info!("{}", message);
+                                        if let Err(e) = slack_clone.send_message(message).await {
+                                            error!("failed to send slack message {e}");
+                                        }
+                                    }
+                                    Err(e) => {
+                                        error!("error sending bundle: {}", e);
+                                    }
+                                }
+                                return;
+                            }
+                            Err(e) => {
+                                error!("error sending bundle: {}", e);
+                                return;
                             }
                         },
                         Err(e) => {
@@ -211,8 +222,6 @@ fn last_minute_bid_task(
                             return;
                         }
                     };
-                    
-
                 });
             }
         }

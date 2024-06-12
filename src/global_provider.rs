@@ -1,4 +1,3 @@
-use ethers_flashbots::FlashbotsMiddlewareError;
 use crate::{
     benddao::loan::{Loan, NftAsset},
     constants::*,
@@ -14,7 +13,10 @@ use ethers::{
     signers::{coins_bip39::English, LocalWallet, MnemonicBuilder, Signer, Wallet},
     types::{spoof::State, Address, Res, Transaction, U256},
 };
-use ethers_flashbots::{BroadcasterMiddleware, BundleHash, BundleRequest, PendingBundle, PendingBundleError};
+use ethers_flashbots::FlashbotsMiddlewareError;
+use ethers_flashbots::{
+    BroadcasterMiddleware, BundleHash, BundleRequest, PendingBundle, PendingBundleError,
+};
 use futures::future::join_all;
 use log::{debug, error, info};
 use std::sync::Arc;
@@ -240,9 +242,7 @@ impl GlobalProvider {
         Ok(bundle)
     }
 
-    pub async fn send_and_handle_bundle(&self, bundle: BundleRequest) -> 
-    Result<()> 
-    {
+    pub async fn send_and_handle_bundle(&self, bundle: BundleRequest) -> Result<()> {
         let pending_bundle = self.signer_provider.inner().send_bundle(&bundle).await?;
 
         handle_sent_bundle(pending_bundle).await

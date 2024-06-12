@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::time::Instant;
 
+use crate::benddao::loan::ALL_ALLOWED_NFT_ASSETS;
 use crate::constants::STBAYC;
 use crate::reservoir::floor_response::CollectionBidsResponse;
 use crate::Config;
@@ -34,9 +35,7 @@ impl PricesClient {
 
         let mut handles = Vec::new();
 
-        let addresses_to_query = NftAsset::get_all_allowed_nft_assets();
-
-        for addr in addresses_to_query {
+        for addr in ALL_ALLOWED_NFT_ASSETS {
             let client = self.http_client.clone();
             let reservoir_api_key = self.reservoir_api_key.clone();
             let future = tokio::spawn(async move {

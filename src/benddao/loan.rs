@@ -110,16 +110,14 @@ pub enum NftAsset {
     StBayc,
 }
 
-impl NftAsset {
-    pub fn get_all_allowed_nft_assets() -> Vec<NftAsset> {
-        vec![
-            NftAsset::CryptoPunks,
-            NftAsset::Bayc,
-            NftAsset::Azuki,
-            NftAsset::PudgyPenguins,
-        ]
-    }
+pub const ALL_ALLOWED_NFT_ASSETS: [NftAsset; 4] = [
+        NftAsset::CryptoPunks,
+        NftAsset::Bayc,
+        NftAsset::Azuki,
+        NftAsset::PudgyPenguins,
+    ];
 
+impl NftAsset {
     pub fn is_allowed_in_production(&self) -> bool {
         match self {
             NftAsset::CryptoPunks => true,

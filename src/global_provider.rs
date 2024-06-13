@@ -123,8 +123,9 @@ impl GlobalProvider {
             let lend_pool = self.lend_pool.clone();
             let lend_pool_loan = self.lend_pool_loan.clone();
             let state = state.clone();
+            let provider = self.provider.clone();
             let future: JoinHandle<Result<Option<Loan>>> = tokio::spawn(async move {
-                get_loan_data(loan_id, lend_pool, lend_pool_loan, state).await
+                get_loan_data(loan_id, provider, lend_pool, lend_pool_loan, state).await
             });
             handles.push(future);
         }
@@ -144,6 +145,7 @@ impl GlobalProvider {
     pub async fn get_updated_loan(&self, loan_id: U256) -> Result<Option<Loan>> {
         get_loan_data(
             loan_id,
+            self.provider.clone(),
             self.lend_pool.clone(),
             self.lend_pool_loan.clone(),
             None,

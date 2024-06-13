@@ -9,6 +9,7 @@ use crate::{
 use anyhow::Result;
 use ethers::providers::Middleware;
 use ethers::signers::Signer;
+use ethers::types::BlockNumber;
 use ethers::{
     providers::{JsonRpcClient, Provider, RawCall},
     types::{spoof::State, U256},
@@ -16,6 +17,7 @@ use ethers::{
 use ethers_flashbots::PendingBundleError;
 use log::{debug, error, info};
 use std::collections::BTreeSet;
+use std::sync::Arc;
 use tokio::{
     fs::File,
     io::{AsyncReadExt, AsyncWriteExt},
@@ -58,6 +60,7 @@ pub fn calculate_bidding_amount(total_debt: U256) -> U256 {
 /// To do that we need to have already stored the token_id and nft_asset
 pub async fn get_loan_data<U>(
     loan_id: U256,
+    provider: Arc<Provider<U>>,
     lend_pool: LendPool<Provider<U>>,
     lend_pool_loan: LendPoolLoan<Provider<U>>,
     state: Option<State>,
@@ -88,17 +91,26 @@ where
         1 => Status::Created,
         2 => Status::Active,
         3 => {
+            let current_timestamp = provider
+                .get_block(BlockNumber::Latest)
+                .await?
+                .unwrap()
+                .timestamp;
             let (_, _, bid_end_timestamp, _) = lend_pool
                 .get_nft_auction_end_time(loan_data.nft_asset, loan_data.nft_token_id)
                 .await?;
-            Status::Auction(Auction {
-                current_bid: loan_data.bid_price,
-                current_bidder: loan_data.bidder_address,
-                bid_end_timestamp,
-                reserve_asset,
-                nft_asset: loan_data.nft_asset,
-                nft_token_id: loan_data.nft_token_id,
-            })
+            if current_timestamp >= bid_end_timestamp {
+                Status::RepaidDefaulted
+            } else {
+                Status::Auction(Auction {
+                    current_bid: loan_data.bid_price,
+                    current_bidder: loan_data.bidder_address,
+                    bid_end_timestamp,
+                    reserve_asset,
+                    nft_asset: loan_data.nft_asset,
+                    nft_token_id: loan_data.nft_token_id,
+                })
+            }
         }
         4 | 5 => Status::RepaidDefaulted,
         _ => panic!("invalid state"),

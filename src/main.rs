@@ -9,6 +9,7 @@ use bend_dao_collector::simulator::Simulator;
 use bend_dao_collector::spoofer::get_new_state_with_twaps_modded;
 use bend_dao_collector::{Config, LendPoolEvents};
 use ethers::providers::Middleware;
+use ethers::utils::format_ether;
 use ethers::{
     providers::{Provider, StreamExt, Ws},
     types::*,
@@ -132,7 +133,15 @@ fn nft_oracle_mempool_task(
                 continue;
             }
 
+            info!("NftOracle posted prices");
+
             let twaps = simulator.simulate_twap_changes(&tx).await?;
+
+            for &(addr, price) in twaps.iter() {
+                if let Ok(nft_asset) = NftAsset::try_from(addr) {
+                    info!("{:?}: {}", nft_asset, format_ether(price));
+                }
+            }
 
             let modded_state = get_new_state_with_twaps_modded(twaps);
 

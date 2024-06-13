@@ -89,7 +89,7 @@ struct Results {
 
 #[derive(Deserialize)]
 struct Log {
-    address: H160,
+    // address: H160,
     topics: Vec<String>,
     data: String,
 }

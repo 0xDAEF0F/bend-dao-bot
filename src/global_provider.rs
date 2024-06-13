@@ -11,14 +11,11 @@ use ethers::{
     middleware::SignerMiddleware,
     providers::{Middleware, Provider, Ws},
     signers::{coins_bip39::English, LocalWallet, MnemonicBuilder, Signer, Wallet},
-    types::{spoof::State, Address, Res, Transaction, U256},
+    types::{spoof::State, Address, Transaction, U256},
 };
-use ethers_flashbots::FlashbotsMiddlewareError;
-use ethers_flashbots::{
-    BroadcasterMiddleware, BundleHash, BundleRequest, PendingBundle, PendingBundleError,
-};
+use ethers_flashbots::{BroadcasterMiddleware, BundleRequest};
 use futures::future::join_all;
-use log::{debug, error, info};
+use log::{debug, info};
 use std::sync::Arc;
 use tokio::{task::JoinHandle, try_join};
 use url::Url;
@@ -52,24 +49,8 @@ pub struct GlobalProvider {
     >,
     pub lend_pool: LendPool<Provider<Ws>>,
     pub lend_pool_loan: LendPoolLoan<Provider<Ws>>,
-    pub lend_pool_with_signer: LendPool<
-        SignerMiddleware<
-            BroadcasterMiddleware<Arc<Provider<Ws>>, Wallet<SigningKey>>,
-            Wallet<SigningKey>,
-        >,
-    >,
-    pub weth: Weth<
-        SignerMiddleware<
-            BroadcasterMiddleware<Arc<Provider<Ws>>, Wallet<SigningKey>>,
-            Wallet<SigningKey>,
-        >,
-    >,
-    pub usdt: Erc20<
-        SignerMiddleware<
-            BroadcasterMiddleware<Arc<Provider<Ws>>, Wallet<SigningKey>>,
-            Wallet<SigningKey>,
-        >,
-    >,
+    pub weth: Weth<Provider<Ws>>,
+    pub usdt: Erc20<Provider<Ws>>,
 }
 
 impl GlobalProvider {
@@ -104,20 +85,19 @@ impl GlobalProvider {
             ),
             local_wallet.clone(),
         );
+
         let signer_provider = Arc::new(signer_provider);
 
         let lend_pool = LendPool::new(Address::from(LEND_POOL), provider.clone());
-        let lend_pool_with_signer =
-            LendPool::new(Address::from(LEND_POOL), signer_provider.clone());
 
         let address = Address::from(LEND_POOL_LOAN);
         let lend_pool_loan = LendPoolLoan::new(address, provider.clone());
 
         let address = Address::from(WETH);
-        let weth = Weth::new(address, signer_provider.clone());
+        let weth = Weth::new(address, provider.clone());
 
         let address = Address::from(USDT);
-        let usdt = Erc20::new(address, signer_provider.clone());
+        let usdt = Erc20::new(address, provider.clone());
 
         Ok(GlobalProvider {
             local_wallet,
@@ -125,7 +105,6 @@ impl GlobalProvider {
             signer_provider,
             lend_pool,
             lend_pool_loan,
-            lend_pool_with_signer,
             weth,
             usdt,
         })
@@ -218,10 +197,10 @@ impl GlobalProvider {
         max_gas: bool,
     ) -> Result<BundleRequest> {
         for loan in loans {
-            let nft_asset: Address = loan.nft_asset.into();
+            let nft_asset: Address = loan.nft_asset;
 
             let mut tx = self
-                .lend_pool_with_signer
+                .lend_pool
                 .auction(
                     nft_asset,
                     loan.nft_token_id,
@@ -257,8 +236,8 @@ impl GlobalProvider {
 
     pub async fn liquidate_loan(&self, auction: &Auction) -> Result<()> {
         let tx = self
-            .lend_pool_with_signer
-            .liquidate(auction.nft_asset.into(), auction.nft_token_id, U256::zero())
+            .lend_pool
+            .liquidate(auction.nft_asset, auction.nft_token_id, U256::zero())
             .tx;
 
         let reciept = self
@@ -303,7 +282,7 @@ impl GlobalProvider {
 
         let (_loan_id, _bid_start_timestamp, bid_end_timestamp, _redeem_end_timestamp) = self
             .lend_pool
-            .get_nft_auction_end_time(nft_asset.try_into()?, token_id)
+            .get_nft_auction_end_time(nft_asset.try_into().unwrap(), token_id)
             .await?;
 
         if timestamp >= bid_end_timestamp {

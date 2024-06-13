@@ -16,7 +16,7 @@ use ethers::{
 };
 use ethers_flashbots::BundleRequest;
 use loan::{Loan, NftAsset, ReserveAsset};
-use log::{error, info, warn};
+use log::{info, warn};
 use messenger_rs::slack_hook::SlackClient;
 use std::{collections::BTreeSet, sync::Arc};
 use tokio::sync::RwLock;
@@ -120,10 +120,11 @@ impl BendDao {
         let mut bundle = BundleRequest::new();
         bundle.add_transaction(nft_oracle_tx);
 
-        Ok(Some(self
-            .global_provider
-            .create_auction_bundle(bundle, loans_ready_to_auction, false)
-            .await?))
+        Ok(Some(
+            self.global_provider
+                .create_auction_bundle(bundle, loans_ready_to_auction, false)
+                .await?,
+        ))
     }
 
     fn package_loans_ready_to_auction(
@@ -271,7 +272,7 @@ impl BendDao {
         let mut bundles = Vec::new();
 
         for auction in auctions {
-            let price = self.get_price_in_currency(&auction).await?;
+            let price = self.get_price_in_currency(auction).await?;
 
             // TODO: @0xDAEF0F, choose bid price
             let bid = auction.current_bid * 101 / 100;
@@ -296,7 +297,7 @@ impl BendDao {
 
     async fn get_price_in_currency(&self, auction: &Auction) -> Result<U256> {
         let nft_asset = NftAsset::try_from(auction.nft_asset)?;
-        let mut price = self.prices_client.read().await.get_nft_price(nft_asset);
+        let price = self.prices_client.read().await.get_nft_price(nft_asset);
 
         if auction.reserve_asset != ReserveAsset::Weth {
             // let rate = self.prices_client.get_usdt_eth_price().await?;

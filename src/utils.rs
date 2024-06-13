@@ -7,13 +7,13 @@ use crate::{
     LendPool, LendPoolLoan, LoanData,
 };
 use anyhow::Result;
-use ethers::providers::{Middleware, Ws};
+use ethers::providers::Middleware;
 use ethers::signers::Signer;
 use ethers::{
     providers::{JsonRpcClient, Provider, RawCall},
     types::{spoof::State, U256},
 };
-use ethers_flashbots::{FlashbotsMiddlewareError, PendingBundle, PendingBundleError};
+use ethers_flashbots::PendingBundleError;
 use log::{debug, error, info};
 use std::collections::BTreeSet;
 use tokio::{

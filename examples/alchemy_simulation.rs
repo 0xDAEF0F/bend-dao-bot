@@ -22,7 +22,7 @@ async fn main() -> Result<()> {
 
     let tx = provider
         .get_transaction(H256::from_str(
-            &"0x5bc6db566e6965402b597e8ef85b79c2ef67e87d0144112bb6d19a3623b74cfb",
+            "0x5bc6db566e6965402b597e8ef85b79c2ef67e87d0144112bb6d19a3623b74cfb",
         )?)
         .await?
         .unwrap();
@@ -92,7 +92,7 @@ struct Results {
 
 #[derive(Deserialize)]
 struct Log {
-    address: Address,
+    // address: Address,
     topics: Vec<String>,
     data: String,
 }

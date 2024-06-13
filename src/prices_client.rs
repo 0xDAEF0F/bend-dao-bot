@@ -7,6 +7,7 @@ use ethers::types::{Address, U256};
 use futures::future::try_join_all;
 use reqwest::{header::HeaderValue, Client};
 use std::collections::HashMap;
+use std::sync::Arc;
 use url::Url;
 
 const RESERVOIR_BASE_URL: &str = "https://api.reservoir.tools";
@@ -41,13 +42,16 @@ impl PricesClient {
     pub async fn refresh_nft_prices(&mut self) -> Result<()> {
         let mut handles = Vec::new();
 
+        let reservoir_api_key = Arc::new(self.reservoir_api_key.clone());
+        let client = Arc::new(self.http_client.clone());
+
         for nft_asset in ALL_ALLOWED_NFT_ASSETS {
-            let client = self.http_client.clone();
-            let reservoir_api_key = self.reservoir_api_key.clone();
+            let client = Arc::clone(&client);
+            let reservoir_api_key = Arc::clone(&reservoir_api_key);
             let future = tokio::spawn(async move {
                 let nft_asset = nft_asset;
                 let price =
-                    PricesClient::get_best_nft_bid(client, nft_asset, reservoir_api_key).await?;
+                    PricesClient::get_best_nft_bid(client, nft_asset, &reservoir_api_key).await?;
                 anyhow::Ok((nft_asset, price))
             });
             handles.push(future);
@@ -65,9 +69,9 @@ impl PricesClient {
 
     /// Price in ETH (1e18)
     async fn get_best_nft_bid(
-        client: Client,
+        client: Arc<Client>,
         nft_asset: NftAsset,
-        reservoir_api_key: String,
+        reservoir_api_key: &str,
     ) -> Result<U256> {
         let nft_asset = match nft_asset {
             NftAsset::StBayc => NftAsset::Bayc,
@@ -80,10 +84,7 @@ impl PricesClient {
 
         let res = client
             .get(url)
-            .header(
-                "x-api-key",
-                HeaderValue::from_str(reservoir_api_key.as_str())?,
-            )
+            .header("x-api-key", HeaderValue::from_str(reservoir_api_key)?)
             .send()
             .await?;
         let res: CollectionBidsResponse = res.json().await?;
@@ -195,10 +196,13 @@ mod tests {
         let loan_id = U256::from(13069); // token id: #3599
         let loan: Loan = data_source.get_updated_loan(loan_id).await?.unwrap();
 
-        let _eth_price = prices_client
-            .get_best_nft_bid(NftAsset::Mayc)
-            .await
-            .unwrap();
+        let _eth_price = PricesClient::get_best_nft_bid(
+            Arc::new(prices_client.http_client.clone()),
+            NftAsset::Mayc,
+            &prices_client.reservoir_api_key,
+        )
+        .await
+        .unwrap();
 
         let usdt_eth = prices_client.get_usdt_eth_price().await?;
         println!("usdt_eth: {}", usdt_eth);

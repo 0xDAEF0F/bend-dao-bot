@@ -1,25 +1,25 @@
 use anyhow::Result;
-use bend_dao_collector::benddao::loan::{Loan, NftAsset};
+use bend_dao_collector::benddao::loan::NftAsset;
 use bend_dao_collector::benddao::BendDao;
+use bend_dao_collector::constants::*;
 use bend_dao_collector::global_provider::GlobalProvider;
 use bend_dao_collector::lend_pool::LendPool;
 use bend_dao_collector::prices_client::PricesClient;
 use bend_dao_collector::simulator::Simulator;
 use bend_dao_collector::spoofer::get_new_state_with_twaps_modded;
-use bend_dao_collector::constants::*;
 use bend_dao_collector::{Config, LendPoolEvents};
 use ethers::providers::Middleware;
 use ethers::{
     providers::{Provider, StreamExt, Ws},
     types::*,
 };
-use futures::future::{join_all, try_join_all};
+use futures::future::try_join_all;
 use log::{error, info};
 use messenger_rs::slack_hook::SlackClient;
 use std::sync::Arc;
 use tokio::sync::{Mutex, RwLock};
 use tokio::task::JoinHandle;
-use tokio::time::{sleep, sleep_until, Duration};
+use tokio::time::{sleep, Duration};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -140,16 +140,17 @@ fn nft_oracle_mempool_task(
                 .lock()
                 .await
                 .initiate_auctions_if_any(tx, Some(modded_state))
-                .await? {
-                    match global_provider.send_and_handle_bundle(bundle).await {
-                        Ok(_) => {
-                            info!("bundle sent successfully");
-                        }
-                        Err(e) => {
-                            error!("error sending bundle: {}", e);
-                        }
+                .await?
+            {
+                match global_provider.send_and_handle_bundle(bundle).await {
+                    Ok(_) => {
+                        info!("bundle sent successfully");
+                    }
+                    Err(e) => {
+                        error!("error sending bundle: {}", e);
                     }
                 }
+            }
 
             // sleep and wait for one block to be mined so that
             // the refresh includes the latest update
@@ -197,13 +198,9 @@ fn last_minute_bid_task(
             for (i, bundle) in bundles.into_iter().enumerate() {
                 let global_provider_clone = global_provider.clone();
                 let slack_clone = slack.clone();
-                let auction = not_ours[i].clone();
+                let auction = not_ours[i];
                 tokio::spawn(async move {
-                    match {
-                        global_provider_clone
-                            .send_and_handle_bundle(bundle)
-                            .await
-                    } {
+                    match global_provider_clone.send_and_handle_bundle(bundle).await {
                         Ok(_) => {
                             let message = format!(
                                 "bid for {:?} #{:?}sent successfully",
@@ -231,13 +228,11 @@ fn last_minute_bid_task(
                                     error!("error sending bundle: {}", e);
                                 }
                             }
-                            return;
                         }
                         Err(e) => {
                             error!("error sending bundle: {}", e);
-                            return;
                         }
-                    };
+                    }
                 });
             }
         }

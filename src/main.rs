@@ -6,8 +6,7 @@ use bend_dao_collector::lend_pool::LendPool;
 use bend_dao_collector::prices_client::PricesClient;
 use bend_dao_collector::simulator::Simulator;
 use bend_dao_collector::spoofer::get_new_state_with_twaps_modded;
-use bend_dao_collector::utils::handle_sent_bundle;
-use bend_dao_collector::{constants::*, global_provider};
+use bend_dao_collector::constants::*;
 use bend_dao_collector::{Config, LendPoolEvents};
 use ethers::providers::Middleware;
 use ethers::{
@@ -15,7 +14,7 @@ use ethers::{
     types::*,
 };
 use futures::future::{join_all, try_join_all};
-use log::{error, info, warn};
+use log::{error, info};
 use messenger_rs::slack_hook::SlackClient;
 use std::sync::Arc;
 use tokio::sync::{Mutex, RwLock};
@@ -142,12 +141,13 @@ fn nft_oracle_mempool_task(
                 .await
                 .initiate_auctions_if_any(tx, Some(modded_state))
                 .await? {
-                    match global_provider.send_and_handle_bundle(bundle).await? {
+                    match global_provider.send_and_handle_bundle(bundle).await {
                         Ok(_) => {
                             info!("bundle sent successfully");
                         }
                         Err(e) => {
                             error!("error sending bundle: {}", e);
+                        }
                     }
                 }
 

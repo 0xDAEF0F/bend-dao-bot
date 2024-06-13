@@ -3,6 +3,7 @@ use bend_dao_collector::benddao::loan::{Loan, NftAsset};
 use bend_dao_collector::benddao::BendDao;
 use bend_dao_collector::global_provider::GlobalProvider;
 use bend_dao_collector::lend_pool::LendPool;
+use bend_dao_collector::prices_client::PricesClient;
 use bend_dao_collector::simulator::Simulator;
 use bend_dao_collector::spoofer::get_new_state_with_twaps_modded;
 use bend_dao_collector::utils::handle_sent_bundle;
@@ -13,11 +14,11 @@ use ethers::{
     providers::{Provider, StreamExt, Ws},
     types::*,
 };
-use futures::future::join_all;
+use futures::future::{join_all, try_join_all};
 use log::{error, info, warn};
 use messenger_rs::slack_hook::SlackClient;
 use std::sync::Arc;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, RwLock};
 use tokio::task::JoinHandle;
 use tokio::time::{sleep, sleep_until, Duration};
 
@@ -28,7 +29,9 @@ async fn main() -> Result<()> {
 
     let config: Config = envy::from_env()?;
 
-    let mut bend_dao = BendDao::try_new(config.clone()).await?;
+    let prices_client = PricesClient::new(config.clone());
+    let prices_client = Arc::new(RwLock::new(prices_client));
+    let mut bend_dao = BendDao::try_new(config.clone(), prices_client.clone()).await?;
 
     let provider = bend_dao.get_provider();
 
@@ -53,8 +56,15 @@ async fn main() -> Result<()> {
     );
     let task_three_handle =
         last_minute_bid_task(bend_dao.clone(), global_provider, Arc::new(slack));
+    let task_four_handle = refresh_nft_prices_task(prices_client.clone());
 
-    join_all([task_one_handle, task_two_handle, task_three_handle]).await;
+    let _ = try_join_all([
+        task_one_handle,
+        task_two_handle,
+        task_three_handle,
+        task_four_handle,
+    ])
+    .await;
 
     info!("bot is shutting down");
 
@@ -232,5 +242,14 @@ fn last_minute_bid_task(
         }
 
         Ok(())
+    })
+}
+
+fn refresh_nft_prices_task(prices_client: Arc<RwLock<PricesClient>>) -> JoinHandle<Result<()>> {
+    tokio::spawn(async move {
+        loop {
+            prices_client.write().await.refresh_nft_prices().await?;
+            sleep(Duration::from_secs(4 * 60 * 60)).await;
+        }
     })
 }

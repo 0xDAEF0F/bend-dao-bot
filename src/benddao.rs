@@ -19,23 +19,27 @@ use loan::{Loan, NftAsset, ReserveAsset};
 use log::{error, info, warn};
 use messenger_rs::slack_hook::SlackClient;
 use std::{collections::BTreeSet, sync::Arc};
+use tokio::sync::RwLock;
 
 #[allow(dead_code)]
 pub struct BendDao {
     monitored_loans: Vec<U256>, // sorted by `health_factor` in ascending order
     pub pending_auctions: PendingAuctions,
     global_provider: GlobalProvider,
-    prices_client: PricesClient,
+    prices_client: Arc<RwLock<PricesClient>>,
     pub slack_bot: SlackClient,
 }
 
 impl BendDao {
-    pub async fn try_new(config_vars: Config) -> Result<BendDao> {
+    pub async fn try_new(
+        config_vars: Config,
+        prices_client: Arc<RwLock<PricesClient>>,
+    ) -> Result<BendDao> {
         Ok(BendDao {
             monitored_loans: vec![],
             pending_auctions: PendingAuctions::default(),
             global_provider: GlobalProvider::try_new(config_vars.clone()).await?,
-            prices_client: PricesClient::new(config_vars.clone()),
+            prices_client,
             slack_bot: SlackClient::new(config_vars.clone().slack_url),
         })
     }
@@ -309,14 +313,12 @@ impl BendDao {
     }
 
     async fn get_price_in_currency(&self, auction: &Auction) -> Result<U256> {
-        let mut price = self
-            .prices_client
-            .get_best_nft_bid(NftAsset::try_from(auction.nft_asset)?)
-            .await?;
+        let nft_asset = NftAsset::try_from(auction.nft_asset)?;
+        let mut price = self.prices_client.read().await.get_nft_price(nft_asset);
 
         if auction.reserve_asset != ReserveAsset::Weth {
-            let rate = self.prices_client.get_usdt_eth_price().await?;
-            price = rate * price;
+            // let rate = self.prices_client.get_usdt_eth_price().await?;
+            // price = rate * price;
         }
 
         Ok(price)

@@ -99,7 +99,7 @@ impl TryFrom<Address> for ReserveAsset {
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq, Hash, Eq)]
 pub enum NftAsset {
     Azuki,
     Bayc,
@@ -111,11 +111,11 @@ pub enum NftAsset {
 }
 
 pub const ALL_ALLOWED_NFT_ASSETS: [NftAsset; 4] = [
-        NftAsset::CryptoPunks,
-        NftAsset::Bayc,
-        NftAsset::Azuki,
-        NftAsset::PudgyPenguins,
-    ];
+    NftAsset::CryptoPunks,
+    NftAsset::Bayc,
+    NftAsset::Azuki,
+    NftAsset::PudgyPenguins,
+];
 
 impl NftAsset {
     pub fn is_allowed_in_production(&self) -> bool {

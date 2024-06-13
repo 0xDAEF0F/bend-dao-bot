@@ -137,11 +137,19 @@ fn nft_oracle_mempool_task(
 
             let modded_state = get_new_state_with_twaps_modded(twaps);
 
-            bend_dao_state
+            if let Some(bundle) = bend_dao_state
                 .lock()
                 .await
                 .initiate_auctions_if_any(tx, Some(modded_state))
-                .await?;
+                .await? {
+                    match global_provider.send_and_handle_bundle(bundle).await? {
+                        Ok(_) => {
+                            info!("bundle sent successfully");
+                        }
+                        Err(e) => {
+                            error!("error sending bundle: {}", e);
+                    }
+                }
 
             // sleep and wait for one block to be mined so that
             // the refresh includes the latest update
@@ -193,45 +201,38 @@ fn last_minute_bid_task(
                 tokio::spawn(async move {
                     match {
                         global_provider_clone
-                            .signer_provider
-                            .inner()
-                            .send_bundle(&bundle)
+                            .send_and_handle_bundle(bundle)
                             .await
                     } {
-                        Ok(sent_bundle) => match handle_sent_bundle(sent_bundle).await {
-                            Ok(_) => {
-                                let message = format!(
-                                    "bid for {:?} #{:?}sent successfully",
-                                    auction.nft_asset, auction.nft_token_id
-                                );
-                                info!("{}", message);
-                                if let Err(e) = slack_clone.send_message(message).await {
-                                    error!("failed to send slack message {e}");
-                                }
+                        Ok(_) => {
+                            let message = format!(
+                                "bid for {:?} #{:?}sent successfully",
+                                auction.nft_asset, auction.nft_token_id
+                            );
+                            info!("{}", message);
 
-                                sleep(Duration::from_secs(24)).await;
-                                match global_provider_clone.liquidate_loan(&auction).await {
-                                    Ok(_) => {
-                                        let message = format!(
-                                            "liquidated {:?} #{:?} successfully",
-                                            auction.nft_asset, auction.nft_token_id
-                                        );
-                                        info!("{}", message);
-                                        if let Err(e) = slack_clone.send_message(message).await {
-                                            error!("failed to send slack message {e}");
-                                        }
-                                    }
-                                    Err(e) => {
-                                        error!("error sending bundle: {}", e);
+                            if let Err(e) = slack_clone.send_message(message).await {
+                                error!("failed to send slack message {e}");
+                            }
+
+                            sleep(Duration::from_secs(24)).await;
+                            match global_provider_clone.liquidate_loan(&auction).await {
+                                Ok(_) => {
+                                    let message = format!(
+                                        "liquidated {:?} #{:?} successfully",
+                                        auction.nft_asset, auction.nft_token_id
+                                    );
+                                    info!("{}", message);
+                                    if let Err(e) = slack_clone.send_message(message).await {
+                                        error!("failed to send slack message {e}");
                                     }
                                 }
-                                return;
+                                Err(e) => {
+                                    error!("error sending bundle: {}", e);
+                                }
                             }
-                            Err(e) => {
-                                error!("error sending bundle: {}", e);
-                                return;
-                            }
-                        },
+                            return;
+                        }
                         Err(e) => {
                             error!("error sending bundle: {}", e);
                             return;

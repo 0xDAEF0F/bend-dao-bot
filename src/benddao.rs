@@ -101,7 +101,7 @@ impl BendDao {
         &mut self,
         nft_oracle_tx: Transaction,
         modded_state: Option<State>,
-    ) -> Result<()> {
+    ) -> Result<Option<BundleRequest>> {
         let iter = self.monitored_loans.iter().map(|x| x.as_u64());
         let monitored_loans = self
             .global_provider
@@ -114,34 +114,16 @@ impl BendDao {
             BendDao::package_loans_ready_to_auction(monitored_loans, &mut balances);
 
         if loans_ready_to_auction.is_empty() {
-            return Ok(());
+            return Ok(None);
         }
 
         let mut bundle = BundleRequest::new();
         bundle.add_transaction(nft_oracle_tx);
 
-        let bundle = self
+        Ok(Some(self
             .global_provider
             .create_auction_bundle(bundle, loans_ready_to_auction, false)
-            .await?;
-
-        // TODO
-        // handle outside struct for shorter locks
-        match self.global_provider.send_and_handle_bundle(bundle).await {
-            Ok(()) => {
-                info!("started an auction bundle");
-                let _ = self
-                    .slack_bot
-                    .send_message("started an auction bundle")
-                    .await;
-            }
-            Err(e) => {
-                error!("{e}");
-                let _ = self.slack_bot.send_message("failed to start bundle").await;
-            }
-        }
-
-        Ok(())
+            .await?))
     }
 
     fn package_loans_ready_to_auction(

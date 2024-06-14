@@ -205,7 +205,11 @@ fn last_minute_bid_task(
                 info!("{}{}{}", msg, msg_, msg__);
             }
 
-            let bundles = { bend_dao_state.lock().await.try_bids(&not_ours).await? };
+            let bundles = bend_dao_state
+                .lock()
+                .await
+                .verify_and_package_outbids(&not_ours)
+                .await?;
 
             for (i, bundle) in bundles.into_iter().enumerate() {
                 let global_provider_clone = global_provider.clone();

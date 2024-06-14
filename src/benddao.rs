@@ -293,9 +293,13 @@ impl BendDao {
         Ok(())
     }
 
-    /// bids first auction
-    pub async fn try_bids(&mut self, auctions: &Vec<Auction>) -> Result<Vec<BundleRequest>> {
+    /// Bids first auction
+    pub async fn verify_and_package_outbids(
+        &mut self,
+        auctions: &Vec<Auction>,
+    ) -> Result<Vec<BundleRequest>> {
         let mut bundles = Vec::new();
+
         let (prices, eth_usd_price) = {
             let prices_client = self.prices_client.read().await;
             (
@@ -305,24 +309,22 @@ impl BendDao {
         };
 
         for auction in auctions {
-            let best_bid_price = match auction.reserve_asset {
-                ReserveAsset::Usdt => {
-                    let nft_price = prices.get(&NftAsset::try_from(auction.nft_asset)?).unwrap();
-                    nft_price * eth_usd_price / U256::exp10(6)
-                }
-                ReserveAsset::Weth => *prices.get(&NftAsset::try_from(auction.nft_asset)?).unwrap(),
-            };
+            let mut nft_best_bid_price = *prices.get(&auction.nft_asset).unwrap();
 
-            let bid = auction.current_bid * 101 / 100;
+            if auction.reserve_asset == ReserveAsset::Usdt {
+                nft_best_bid_price = nft_best_bid_price * eth_usd_price / U256::exp10(6);
+            }
 
-            if best_bid_price > bid {
+            let outbid = auction.current_bid * 101 / 100;
+
+            if nft_best_bid_price > outbid {
                 // not sending as one bundle bc we may get a revert chain
                 // if one bid get frontrun, all bids will revert
-                bundles.push(self.send_bid(auction, bid).await?)
+                bundles.push(self.send_bid(auction, outbid).await?)
             } else {
                 info!(
                     "bid on {:?} #{} was not profitable for {} as price is: {}",
-                    auction.nft_asset, auction.nft_token_id, bid, best_bid_price
+                    auction.nft_asset, auction.nft_token_id, outbid, nft_best_bid_price
                 );
             }
         }

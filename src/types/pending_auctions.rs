@@ -26,21 +26,22 @@ impl PendingAuctions {
     }
 
     /// adds a new auction and takes care of sorting them.
-    pub fn add_update_auction(&mut self, auction: Auction) {
+    pub fn add_update_auction(&mut self, auction: Auction) -> bool {
         if let Some(idx) = self.pending_auctions.iter().position(|a| {
             a.nft_asset == auction.nft_asset && a.nft_token_id == auction.nft_token_id
         }) {
             // order does not need to change because the timestamp of the auction remains the same
             self.pending_auctions[idx] = auction;
-            return;
+            true
+        } else {
+            // add it to the pending auctions
+            self.pending_auctions.push(auction);
+
+            // sort it by `bid_end_timestamp` on ascending order
+            self.pending_auctions
+                .sort_by(|a, b| a.bid_end_timestamp.cmp(&b.bid_end_timestamp));
+            false
         }
-
-        // add it to the pending auctions
-        self.pending_auctions.push(auction);
-
-        // sort it by `bid_end_timestamp` on ascending order
-        self.pending_auctions
-            .sort_by(|a, b| a.bid_end_timestamp.cmp(&b.bid_end_timestamp));
     }
 
     /// removes an auction from state.
@@ -70,10 +71,9 @@ impl PendingAuctions {
             auctions_due.push(self.pop_first().unwrap());
         }
         let (ours, not_ours): (Vec<_>, Vec<_>) = auctions_due
-                .into_iter()
-                .partition(|auction| auction.current_bidder == OUR_EOA_ADDRESS.into());
+            .into_iter()
+            .partition(|auction| auction.current_bidder == OUR_EOA_ADDRESS.into());
 
         (ours, not_ours)
     }
-
 }

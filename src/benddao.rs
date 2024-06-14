@@ -67,12 +67,16 @@ impl BendDao {
             reserve_asset: ReserveAsset::try_from(evt.reserve).unwrap(),
         };
 
-        self.pending_auctions.add_update_auction(auction);
-
-        let msg = format!(
-            "Auction/Bid for {:?} #{:?}",
-            evt.nft_asset, evt.nft_token_id
-        );
+        let msg = match self.pending_auctions.add_update_auction(auction) {
+            true => format!(
+                "Auction/Bid for {:?} #{:?} by {:?}",
+                evt.nft_asset, evt.nft_token_id, evt.on_behalf_of
+            ),
+            false => format!(
+                "New Auction for https://www.benddao.xyz/en/auctions/bid/{:?}/#{:?} by {:?}",
+                evt.nft_asset, evt.nft_token_id, evt.on_behalf_of
+            ),
+        };
 
         warn!("{msg}");
         self.slack_bot.send_message(msg).await.ok();
@@ -94,7 +98,7 @@ impl BendDao {
 
         let nft_asset = NftAsset::try_from(evt.nft_asset).unwrap();
         let msg = format!(
-            "liquidation happened. {:?} #{}",
+            "liquidation happened for {:?} #{}",
             nft_asset, evt.nft_token_id
         );
         warn!("{msg}");

@@ -235,7 +235,6 @@ fn last_minute_bid_task(
                     }
                 });
             }
-        
 
             for auction in ours {
                 match global_provider.liquidate_loan(&auction).await {

@@ -62,14 +62,18 @@ impl PendingAuctions {
             if auction.bid_end_timestamp > current_timestamp + DELAY_FOR_LAST_BID {
                 break;
             }
+            if auction.current_bidder == OUR_EOA_ADDRESS.into() {
+                if auction.bid_end_timestamp > current_timestamp {
+                    break;
+                }
+            }
             auctions_due.push(self.pop_first().unwrap());
         }
-        let (mut ours, not_ours): (Vec<_>, Vec<_>) = auctions_due
+        let (ours, not_ours): (Vec<_>, Vec<_>) = auctions_due
                 .into_iter()
                 .partition(|auction| auction.current_bidder == OUR_EOA_ADDRESS.into());
 
-        ours.retain(|auction| auction.bid_end_timestamp > current_timestamp);
-
         (ours, not_ours)
     }
+
 }

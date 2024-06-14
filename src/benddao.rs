@@ -69,7 +69,10 @@ impl BendDao {
 
         self.pending_auctions.add_update_auction(auction);
 
-        let msg = format!("Auction/Bid for {:?} #{:?}", evt.nft_asset, evt.nft_token_id);
+        let msg = format!(
+            "Auction/Bid for {:?} #{:?}",
+            evt.nft_asset, evt.nft_token_id
+        );
 
         warn!("{msg}");
         self.slack_bot.send_message(msg).await.ok();
@@ -272,6 +275,8 @@ impl BendDao {
     pub async fn try_bids(&mut self, auctions: &Vec<Auction>) -> Result<Vec<BundleRequest>> {
         let mut bundles = Vec::new();
 
+        let eth_usd_price = self.prices_client.read().await.get_eth_usd_price();
+
         for auction in auctions {
             let price = self.get_price_in_currency(auction).await?;
 
@@ -299,15 +304,16 @@ impl BendDao {
     /// Retrieves the best bid price for the `nft_asset` (WETH | USDT).
     async fn get_price_in_currency(&self, auction: &Auction) -> Result<U256> {
         let nft_asset = NftAsset::try_from(auction.nft_asset)?;
-        // ETH price
-        let price = self.prices_client.read().await.get_nft_price(nft_asset);
 
-        if auction.reserve_asset != ReserveAsset::Weth {
-            // let rate = self.prices_client.get_usdt_eth_price().await?;
-            // price = rate * price;
+        // can be WETH or USDT
+        let mut nft_price = self.prices_client.read().await.get_nft_price(nft_asset);
+
+        if auction.reserve_asset == ReserveAsset::Usdt {
+            let eth_usd = self.prices_client.read().await.get_eth_usd_price();
+            nft_price = nft_price * U256::exp10(6) / eth_usd;
         }
 
-        Ok(price)
+        Ok(nft_price)
     }
 
     async fn send_bid(&self, auction: &Auction, bid: U256) -> Result<BundleRequest> {

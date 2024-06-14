@@ -160,13 +160,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_azuki_price() -> Result<()> {
+    async fn test_bayc_price() -> Result<()> {
         dotenv::dotenv().ok();
         let config_vars: Config = envy::from_env()?;
 
         let mut client = PricesClient::new(config_vars);
 
-        client.refresh_nft_prices().await?;
+        client.refresh_prices().await?;
 
         let bayc_eth_price = client.get_nft_price(NftAsset::Bayc);
 
@@ -174,6 +174,14 @@ mod tests {
 
         // unlikely 1 BAYC < 1 ETH
         assert!(bayc_eth_price > parse_ether("1").unwrap());
+
+        let eth_usd = client.get_eth_usd_price();
+        let bayc_usd = bayc_eth_price * U256::exp10(6) / eth_usd;
+
+        println!("bayc_usd_price: {}", bayc_usd);
+
+        // unlikely 1 BAYC < 10_000 USD
+        assert!(bayc_usd > U256::from(10_000) * U256::exp10(6));
 
         Ok(())
     }

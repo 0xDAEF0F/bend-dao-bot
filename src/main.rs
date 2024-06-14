@@ -18,10 +18,9 @@ use futures::future::try_join_all;
 use log::{error, info};
 use messenger_rs::slack_hook::SlackClient;
 use std::sync::Arc;
-use std::time::Instant;
 use tokio::sync::{Mutex, RwLock};
 use tokio::task::JoinHandle;
-use tokio::time::{sleep, sleep_until, Duration};
+use tokio::time::{sleep, Duration};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -204,7 +203,7 @@ fn last_minute_bid_task(
                     match global_provider_clone.send_and_handle_bundle(bundle).await {
                         Ok(_) => {
                             let message = format!(
-                                "bid for {:?} #{:?}sent successfully",
+                                "bid for {:?} #{:?}sent successfully, waiting 2 block to liquidate",
                                 auction.nft_asset, auction.nft_token_id
                             );
                             info!("{}", message);
@@ -265,7 +264,7 @@ fn refresh_nft_prices_task(prices_client: Arc<RwLock<PricesClient>>) -> JoinHand
     tokio::spawn(async move {
         loop {
             prices_client.write().await.refresh_prices().await?;
-            sleep(Duration::from_secs(4 * 60 * 60)).await;
+            sleep(Duration::from_secs(4 * ONE_HOUR)).await;
         }
     })
 }

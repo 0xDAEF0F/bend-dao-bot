@@ -313,6 +313,8 @@ impl BendDao {
     async fn send_bid(&self, auction: &Auction, bid: U256) -> Result<BundleRequest> {
         let bundle = BundleRequest::new()
             .set_max_timestamp(auction.bid_end_timestamp.as_u64())
+            // 22 is arbitrary
+            // can change in future
             .set_min_timestamp(auction.bid_end_timestamp.as_u64() - 22);
         self.global_provider
             .create_auction_bundle(bundle, vec![AuctionBid::new(auction, bid)], true)

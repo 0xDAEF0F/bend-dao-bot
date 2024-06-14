@@ -1,4 +1,4 @@
-use super::{auction, Auction};
+use super::Auction;
 use crate::constants::{DELAY_FOR_LAST_BID, OUR_EOA_ADDRESS};
 use ethers::types::*;
 use log::info;

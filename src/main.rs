@@ -187,13 +187,15 @@ fn last_minute_bid_task(
         let mut stream = provider.subscribe_blocks().await?;
 
         while let Some(block) = stream.next().await {
-            let (ours, not_ours) = bend_dao_state
-                .lock()
-                .await
-                .pending_auctions
-                .pop_auctions_due(block.timestamp);
+            let (ours, not_ours) = {
+                bend_dao_state
+                    .lock()
+                    .await
+                    .pending_auctions
+                    .pop_auctions_due(block.timestamp)
+            };
 
-            let bundles = bend_dao_state.lock().await.try_bids(&not_ours).await?;
+            let bundles = { bend_dao_state.lock().await.try_bids(&not_ours).await? };
 
             for (i, bundle) in bundles.into_iter().enumerate() {
                 let global_provider_clone = global_provider.clone();

@@ -275,25 +275,18 @@ impl BendDao {
     pub async fn try_bids(&mut self, auctions: &Vec<Auction>) -> Result<Vec<BundleRequest>> {
         let mut bundles = Vec::new();
 
-        let eth_usd_price = self.prices_client.read().await.get_eth_usd_price();
-
         for auction in auctions {
-            let price = self.get_price_in_currency(auction).await?;
-
-            // TODO: @0xDAEF0F, choose bid price
+            let best_bid_price = self.get_price_in_currency(auction).await?;
             let bid = auction.current_bid * 101 / 100;
 
-            if price > bid {
+            if best_bid_price > bid {
                 // not sending as one bundle bc we may get a revert chain
                 // if one bid get frontrun, all bids will revert
-                bundles.push(
-                    self.send_bid(auction, auction.current_bid * 101 / 100)
-                        .await?,
-                )
+                bundles.push(self.send_bid(auction, bid).await?)
             } else {
                 info!(
                     "bid on {:?} #{} was not profitable for {} as price is: {}",
-                    auction.nft_asset, auction.nft_token_id, bid, price
+                    auction.nft_asset, auction.nft_token_id, bid, best_bid_price
                 );
             }
         }

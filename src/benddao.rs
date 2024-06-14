@@ -69,7 +69,7 @@ impl BendDao {
 
         self.pending_auctions.add_update_auction(auction);
 
-        let msg = format!("*Auction* started by {:?} for https://www.benddao.xyz/en/auctions/bid/{:?}/{:?}", evt.on_behalf_of, evt.nft_asset, evt.nft_token_id);
+        let msg = format!("Auction/Bid for {:?} #{:?}", evt.nft_asset, evt.nft_token_id);
 
         warn!("{msg}");
         self.slack_bot.send_message(msg).await.ok();

@@ -161,9 +161,9 @@ fn nft_oracle_mempool_task(
                 }
             }
 
-            // sleep and wait for one block to be mined so that
+            // sleep and wait for two blocks to be mined so that
             // the refresh includes the latest update
-            sleep(Duration::from_secs(12)).await;
+            sleep(Duration::from_secs(24)).await;
 
             bend_dao_state
                 .lock()

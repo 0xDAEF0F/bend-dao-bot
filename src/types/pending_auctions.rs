@@ -1,5 +1,8 @@
 use super::Auction;
-use crate::constants::{DELAY_FOR_LAST_BID, OUR_EOA_ADDRESS};
+use crate::{
+    benddao::loan::NftAsset,
+    constants::{DELAY_FOR_LAST_BID, OUR_EOA_ADDRESS},
+};
 use ethers::types::*;
 use log::info;
 
@@ -44,8 +47,8 @@ impl PendingAuctions {
         }
     }
 
-    /// removes an auction from state.
-    pub fn remove_auction(&mut self, nft_asset: Address, nft_token_id: U256) {
+    /// Removes an auction from `PendingAuctions`.
+    pub fn remove_auction(&mut self, nft_asset: NftAsset, nft_token_id: U256) {
         if let Some(idx) = self
             .pending_auctions
             .iter()

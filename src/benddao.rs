@@ -61,10 +61,10 @@ impl BendDao {
         let auction = Auction {
             current_bid: evt.bid_price,
             current_bidder: evt.on_behalf_of,
-            nft_asset: evt.nft_asset,
+            nft_asset: evt.nft_asset.try_into().unwrap(),
             nft_token_id: evt.nft_token_id,
             bid_end_timestamp,
-            reserve_asset: ReserveAsset::try_from(evt.reserve).unwrap(),
+            reserve_asset: evt.reserve.try_into().unwrap(),
         };
 
         let msg = match self.pending_auctions.add_update_auction(auction) {
@@ -83,8 +83,9 @@ impl BendDao {
     }
 
     pub async fn react_to_redeem(&mut self, evt: RedeemFilter) {
+        let nft_asset = NftAsset::try_from(evt.nft_asset).unwrap();
         self.pending_auctions
-            .remove_auction(evt.nft_asset, evt.nft_token_id);
+            .remove_auction(nft_asset, evt.nft_token_id);
 
         let nft_asset = NftAsset::try_from(evt.nft_asset).unwrap();
         let msg = format!("redeem happened. {:?} #{}", nft_asset, evt.nft_token_id);
@@ -93,10 +94,10 @@ impl BendDao {
     }
 
     pub async fn react_to_liquidation(&mut self, evt: LiquidateFilter) {
-        self.pending_auctions
-            .remove_auction(evt.nft_asset, evt.nft_token_id);
-
         let nft_asset = NftAsset::try_from(evt.nft_asset).unwrap();
+        self.pending_auctions
+            .remove_auction(nft_asset, evt.nft_token_id);
+
         let msg = format!(
             "liquidation happened for {:?} #{}",
             nft_asset, evt.nft_token_id

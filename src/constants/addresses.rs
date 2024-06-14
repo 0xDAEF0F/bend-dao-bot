@@ -7,7 +7,7 @@ pub const OUR_EOA_ADDRESS: [u8; 20] = hex!("a28d40f507d39584c6f43d999f77d41ab86a
 pub const LEND_POOL: [u8; 20] = hex!("70b97a0da65c15dfb0ffa02aee6fa36e507c2762");
 pub const LEND_POOL_LOAN: [u8; 20] = hex!("5f6ac80cdb9e87f3cfa6a90e5140b9a16a361d5c");
 pub const NFT_ORACLE: [u8; 20] = hex!("7C2A19e54e48718f6C60908a9Cff3396E4Ea1eBA");
-pub const NFT_ORACLE_CONTROLLER_EOA: [u8; 20] = hex!("25259003CD9de81e9462537622becb32fb6bFc24");
+pub const NFT_ORACLE_CONTROLLER_EOA: [u8; 20] = hex!("14A2e477c5E4b679b87880a9b72A4638844b18b3");
 
 // tokens
 pub const USDT: [u8; 20] = hex!("dac17f958d2ee523a2206206994597c13d831ec7");

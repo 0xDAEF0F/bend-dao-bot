@@ -1,9 +1,9 @@
-use crate::benddao::loan::ReserveAsset;
+use crate::benddao::loan::{NftAsset, ReserveAsset};
 use ethers::types::*;
 
 #[derive(Debug, PartialEq, Copy, Clone)]
 pub struct Auction {
-    pub nft_asset: Address,
+    pub nft_asset: NftAsset,
     pub nft_token_id: U256,
     pub current_bid: U256,
     pub current_bidder: Address,

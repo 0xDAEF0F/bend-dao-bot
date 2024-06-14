@@ -86,6 +86,14 @@ where
         }
     };
 
+    let nft_asset = match NftAsset::try_from(loan_data.nft_asset) {
+        Ok(nft_asset) => nft_asset,
+        Err(e) => {
+            debug!("{e}");
+            return Ok(None);
+        }
+    };
+
     let status = match loan_data.state {
         0 => return Ok(None),
         1 => Status::Created,
@@ -107,21 +115,13 @@ where
                     current_bidder: loan_data.bidder_address,
                     bid_end_timestamp,
                     reserve_asset,
-                    nft_asset: loan_data.nft_asset,
+                    nft_asset,
                     nft_token_id: loan_data.nft_token_id,
                 })
             }
         }
         4 | 5 => Status::RepaidDefaulted,
         _ => panic!("invalid state"),
-    };
-
-    let nft_asset = match NftAsset::try_from(loan_data.nft_asset) {
-        Ok(nft_asset) => nft_asset,
-        Err(e) => {
-            debug!("{e}");
-            return Ok(None);
-        }
     };
 
     let (_, _, _, total_debt, _, health_factor) = if let Some(state) = state {

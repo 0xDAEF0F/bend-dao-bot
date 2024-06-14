@@ -239,7 +239,7 @@ impl GlobalProvider {
     pub async fn liquidate_loan(&self, auction: &Auction) -> Result<()> {
         let tx = self
             .lend_pool
-            .liquidate(auction.nft_asset, auction.nft_token_id, U256::zero())
+            .liquidate(auction.nft_asset.into(), auction.nft_token_id, U256::zero())
             .tx;
 
         let reciept = self

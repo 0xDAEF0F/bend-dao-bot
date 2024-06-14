@@ -53,8 +53,8 @@ impl Loan {
         match self.reserve_asset {
             ReserveAsset::Weth => Ok(self.total_debt),
             ReserveAsset::Usdt => {
-                let usd_eth_price = prices_client.get_usdt_eth_price().await?;
-                let total_debt = self.total_debt * usd_eth_price / U256::exp10(6);
+                let eth_usd_price = prices_client.get_eth_usd_price();
+                let total_debt = self.total_debt * eth_usd_price / U256::exp10(6);
                 Ok(total_debt)
             }
         }

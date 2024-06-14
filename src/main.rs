@@ -264,7 +264,7 @@ fn last_minute_bid_task(
 fn refresh_nft_prices_task(prices_client: Arc<RwLock<PricesClient>>) -> JoinHandle<Result<()>> {
     tokio::spawn(async move {
         loop {
-            prices_client.write().await.refresh_nft_prices().await?;
+            prices_client.write().await.refresh_prices().await?;
             sleep(Duration::from_secs(4 * 60 * 60)).await;
         }
     })

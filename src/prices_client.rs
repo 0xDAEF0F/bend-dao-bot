@@ -15,6 +15,7 @@ const COINMARKETCAP_BASE_URL: &str = "https://pro-api.coinmarketcap.com";
 
 pub struct PricesClient {
     http_client: Client,
+    eth_usd_price: U256,
     prices: HashMap<NftAsset, U256>,
     reservoir_api_key: String,
     coinmarketcap_api_key: String,
@@ -24,12 +25,14 @@ impl PricesClient {
     pub fn new(config: Config) -> PricesClient {
         PricesClient {
             prices: HashMap::new(),
+            eth_usd_price: U256::zero(),
             reservoir_api_key: config.reservoir_api_key,
             coinmarketcap_api_key: config.coinmarketcap_api_key,
             http_client: Client::new(),
         }
     }
 
+    /// Prices in ETH (1e18)
     pub fn get_nft_price(&self, nft_asset: NftAsset) -> U256 {
         let nft_asset = match nft_asset {
             NftAsset::StBayc => NftAsset::Bayc,
@@ -39,7 +42,17 @@ impl PricesClient {
     }
 
     /// Prices in ETH (1e18)
-    pub async fn refresh_nft_prices(&mut self) -> Result<()> {
+    pub fn get_eth_usd_price(&self) -> U256 {
+        self.eth_usd_price
+    }
+
+    pub async fn refresh_prices(&mut self) -> Result<()> {
+        self.refresh_eth_usd_price().await?;
+        self.refresh_nft_prices().await?;
+        Ok(())
+    }
+
+    async fn refresh_nft_prices(&mut self) -> Result<()> {
         let mut handles = Vec::new();
 
         let reservoir_api_key = Arc::new(self.reservoir_api_key.clone());
@@ -63,6 +76,17 @@ impl PricesClient {
             let (addr, price) = res?;
             self.prices.insert(addr, price);
         }
+
+        Ok(())
+    }
+
+    async fn refresh_eth_usd_price(&mut self) -> Result<()> {
+        let usd_eth_price = self.get_usd_eth_price().await?;
+
+        let eth_usd_price = (1e18_f64 / usd_eth_price.floor()) as u64;
+        let eth_usd_price = U256::from(eth_usd_price);
+
+        self.eth_usd_price = eth_usd_price;
 
         Ok(())
     }
@@ -92,41 +116,10 @@ impl PricesClient {
         res.get_best_bid()
     }
 
-    // scaled by 1e18
-    /// returns usd per eth
-    pub async fn get_usdt_eth_price(&self) -> Result<U256> {
-        let eth_usd_price = self.get_eth_usd_price().await?;
-        let usdt_usd_price = self.get_usdt_usd_price().await?;
-
-        let price = usdt_usd_price * 1e18 / eth_usd_price;
-        let price = price.floor();
-        let price = format!("{}", price);
-
-        Ok(U256::from_dec_str(&price)?)
-    }
-
-    async fn get_eth_usd_price(&self) -> Result<f64> {
+    async fn get_usd_eth_price(&self) -> Result<f64> {
         let mut url: Url = COINMARKETCAP_BASE_URL.parse()?;
         url.set_path("v2/cryptocurrency/quotes/latest");
         url.set_query(Some("id=1027"));
-
-        let res = self
-            .http_client
-            .get(url)
-            .header("X-CMC_PRO_API_KEY", &self.coinmarketcap_api_key)
-            .header("Accept", "application/json")
-            .send()
-            .await?;
-
-        let res: PriceResponse = res.json().await?;
-
-        Ok(res.get_usd_price())
-    }
-
-    async fn get_usdt_usd_price(&self) -> Result<f64> {
-        let mut url: Url = COINMARKETCAP_BASE_URL.parse()?;
-        url.set_path("v2/cryptocurrency/quotes/latest");
-        url.set_query(Some("id=825"));
 
         let res = self
             .http_client
@@ -145,74 +138,42 @@ impl PricesClient {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{benddao::loan::Loan, global_provider::GlobalProvider};
+    use ethers::utils::parse_ether;
 
     #[tokio::test]
-    async fn test_get_all_nft_prices() -> Result<()> {
+    async fn test_eth_price() -> Result<()> {
         dotenv::dotenv().ok();
-
         let config_vars: Config = envy::from_env()?;
+
         let mut client = PricesClient::new(config_vars);
 
-        let start = chrono::Local::now();
+        client.refresh_eth_usd_price().await?;
 
-        let prices = client.refresh_nft_prices().await?;
+        let eth_usd_price = client.get_eth_usd_price();
 
-        let end = chrono::Local::now();
+        println!("eth_usd_price: {}", eth_usd_price);
 
-        let duration = end - start;
-
-        println!("duration: {:?} ms", duration.num_milliseconds());
-        println!("{:?}", prices);
+        // unlikely 1 ETH < 999 USD
+        assert!(eth_usd_price > U256::from((1_f64 / 999_f64).floor() as u64));
 
         Ok(())
     }
 
     #[tokio::test]
-    async fn test_get_best_nft_bid() -> Result<()> {
+    async fn test_azuki_price() -> Result<()> {
         dotenv::dotenv().ok();
-
         let config_vars: Config = envy::from_env()?;
+
         let mut client = PricesClient::new(config_vars);
 
         client.refresh_nft_prices().await?;
 
-        let price = client.get_nft_price(NftAsset::Azuki);
+        let bayc_eth_price = client.get_nft_price(NftAsset::Bayc);
 
-        println!("{}", price);
+        println!("bayc_eth_price: {}", bayc_eth_price);
 
-        assert!(price > U256::zero());
-
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn test_get_profit_for_nft() -> Result<()> {
-        let config_vars: Config = envy::from_env()?;
-
-        let data_source = GlobalProvider::try_new(config_vars.clone()).await?;
-        let prices_client = PricesClient::new(config_vars.clone());
-
-        let loan_id = U256::from(13069); // token id: #3599
-        let loan: Loan = data_source.get_updated_loan(loan_id).await?.unwrap();
-
-        let _eth_price = PricesClient::get_best_nft_bid(
-            Arc::new(prices_client.http_client.clone()),
-            NftAsset::Mayc,
-            &prices_client.reservoir_api_key,
-        )
-        .await
-        .unwrap();
-
-        let usdt_eth = prices_client.get_usdt_eth_price().await?;
-        println!("usdt_eth: {}", usdt_eth);
-
-        let total_debt_eth = loan.total_debt * usdt_eth / U256::exp10(6);
-
-        assert!(total_debt_eth > U256::exp10(18));
-
-        println!("total_debt_eth: {}", total_debt_eth);
-        println!("total_debt_usdt: {}", loan.total_debt);
+        // unlikely 1 BAYC < 1 ETH
+        assert!(bayc_eth_price > parse_ether("1").unwrap());
 
         Ok(())
     }

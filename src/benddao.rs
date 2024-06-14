@@ -69,11 +69,11 @@ impl BendDao {
 
         let msg = match self.pending_auctions.add_update_auction(auction) {
             true => format!(
-                "Auction/Bid for {:?} #{:?} by {:?}",
+                "Auction/Bid for {:?} #{} by {}",
                 evt.nft_asset, evt.nft_token_id, evt.on_behalf_of
             ),
             false => format!(
-                "New Auction for https://www.benddao.xyz/en/auctions/bid/{:?}/#{:?} by {:?}",
+                "New Auction for https://www.benddao.xyz/en/auctions/bid/{:?}/{} by {}",
                 evt.nft_asset, evt.nft_token_id, evt.on_behalf_of
             ),
         };

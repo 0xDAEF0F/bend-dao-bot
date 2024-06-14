@@ -58,13 +58,13 @@ async fn main() -> Result<()> {
         last_minute_bid_task(bend_dao.clone(), global_provider, Arc::new(slack));
     let task_four_handle = refresh_nft_prices_task(prices_client);
 
-    let _ = try_join_all([
+    try_join_all([
         task_one_handle,
         task_two_handle,
         task_three_handle,
         task_four_handle,
     ])
-    .await;
+    .await?;
 
     info!("bot is shutting down");
 

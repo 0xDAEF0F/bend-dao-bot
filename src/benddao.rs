@@ -329,24 +329,6 @@ impl BendDao {
         Ok(bundles)
     }
 
-    /// Retrieves the best bid price for the `nft_asset` (WETH | USDT).
-    // async fn get_prices_in_currency(&self, auction: &Auction) -> Result<U256> {
-    //     // let nft_asset = NftAsset::try_from(auction.nft_asset)?;
-
-    //     // // can be WETH or USDT
-    //     // let mut nft_price = self.prices_client.read().await.get_nft_price(nft_asset);
-
-    //     // if auction.reserve_asset == ReserveAsset::Usdt {
-    //     //     let eth_usd = self.prices_client.read().await.get_eth_usd_price();
-    //     //     nft_price = nft_price * U256::exp10(6) / eth_usd;
-    //     // }
-
-    //     let eth_usd = self.prices_client.read().await.get_eth_usd_price();
-    //     let prices = self.prices_client.read().await.;
-
-    //     Ok(nft_price)
-    // }
-
     async fn send_bid(&self, auction: &Auction, bid: U256) -> Result<BundleRequest> {
         let bundle = BundleRequest::new()
             .set_max_timestamp(auction.bid_end_timestamp.as_u64())

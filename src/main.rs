@@ -176,7 +176,7 @@ fn nft_oracle_mempool_task(
     })
 }
 
-/// task that monitors all ongoing auctions
+/// Task that monitors all ongoing auctions
 fn last_minute_bid_task(
     bend_dao_state: Arc<Mutex<BendDao>>,
     global_provider: Arc<GlobalProvider>,
@@ -194,6 +194,16 @@ fn last_minute_bid_task(
                     .pending_auctions
                     .pop_auctions_due(block.timestamp)
             };
+
+            for auctions_due in ours.iter().chain(not_ours.iter()) {
+                let msg = format!(
+                    "Auction due to outbid: {:?} #{}\n",
+                    auctions_due.nft_asset, auctions_due.nft_token_id
+                );
+                let msg_ = format!("Bid ends: {}\n", auctions_due.bid_end_timestamp);
+                let msg__ = format!("Current timestamp: {}", block.timestamp);
+                info!("{}{}{}", msg, msg_, msg__);
+            }
 
             let bundles = { bend_dao_state.lock().await.try_bids(&not_ours).await? };
 

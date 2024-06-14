@@ -56,7 +56,10 @@ impl PendingAuctions {
         {
             self.pending_auctions.remove(idx);
         } else {
-            info!("could not remove {:?} #{}", nft_asset, nft_token_id);
+            info!(
+                "could not remove {:?} #{} from PendingAuctions",
+                nft_asset, nft_token_id
+            );
         }
     }
 

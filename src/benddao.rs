@@ -118,8 +118,9 @@ impl BendDao {
 
         let mut balances = self.global_provider.get_balances().await?;
 
-        let loans_ready_to_auction =
-            BendDao::package_loans_ready_to_auction(monitored_loans, &mut balances);
+        let loans_ready_to_auction = self
+            .package_loans_ready_to_auction(monitored_loans, &mut balances)
+            .await;
 
         if loans_ready_to_auction.is_empty() {
             return Ok(None);
@@ -135,11 +136,19 @@ impl BendDao {
         ))
     }
 
-    fn package_loans_ready_to_auction(
+    async fn package_loans_ready_to_auction(
+        &self,
         loans: Vec<Loan>,
         balances: &mut Balances,
     ) -> Vec<AuctionBid> {
         let mut loans_for_auction = vec![];
+        let (prices, eth_usd) = {
+            let prices_client = &self.prices_client.read().await;
+            (
+                &prices_client.prices.clone(),
+                prices_client.get_eth_usd_price(),
+            )
+        };
 
         for loan in loans {
             if loan.status != Status::Active || !loan.is_auctionable() {
@@ -165,6 +174,10 @@ impl BendDao {
                     if balances.usdt < bid_amount {
                         continue;
                     } else {
+                        let price = prices.get(&loan.nft_asset).unwrap() * U256::exp10(6) / eth_usd;
+                        if bid_amount > price {
+                            continue;
+                        }
                         balances.usdt -= bid_amount;
                     }
                 }
@@ -172,6 +185,10 @@ impl BendDao {
                     if balances.weth < bid_amount {
                         continue;
                     } else {
+                        let price = *prices.get(&loan.nft_asset).unwrap();
+                        if bid_amount > price {
+                            continue;
+                        }
                         balances.weth -= bid_amount;
                     }
                 }
@@ -278,9 +295,23 @@ impl BendDao {
     /// bids first auction
     pub async fn try_bids(&mut self, auctions: &Vec<Auction>) -> Result<Vec<BundleRequest>> {
         let mut bundles = Vec::new();
+        let (prices, eth_usd_price) = {
+            let prices_client = self.prices_client.read().await;
+            (
+                &prices_client.prices.clone(),
+                prices_client.get_eth_usd_price(),
+            )
+        };
 
         for auction in auctions {
-            let best_bid_price = self.get_price_in_currency(auction).await?;
+            let best_bid_price = match auction.reserve_asset {
+                ReserveAsset::Usdt => {
+                    let nft_price = prices.get(&NftAsset::try_from(auction.nft_asset)?).unwrap();
+                    nft_price * eth_usd_price / U256::exp10(6)
+                }
+                ReserveAsset::Weth => *prices.get(&NftAsset::try_from(auction.nft_asset)?).unwrap(),
+            };
+
             let bid = auction.current_bid * 101 / 100;
 
             if best_bid_price > bid {
@@ -299,26 +330,29 @@ impl BendDao {
     }
 
     /// Retrieves the best bid price for the `nft_asset` (WETH | USDT).
-    async fn get_price_in_currency(&self, auction: &Auction) -> Result<U256> {
-        let nft_asset = NftAsset::try_from(auction.nft_asset)?;
+    // async fn get_prices_in_currency(&self, auction: &Auction) -> Result<U256> {
+    //     // let nft_asset = NftAsset::try_from(auction.nft_asset)?;
 
-        // can be WETH or USDT
-        let mut nft_price = self.prices_client.read().await.get_nft_price(nft_asset);
+    //     // // can be WETH or USDT
+    //     // let mut nft_price = self.prices_client.read().await.get_nft_price(nft_asset);
 
-        if auction.reserve_asset == ReserveAsset::Usdt {
-            let eth_usd = self.prices_client.read().await.get_eth_usd_price();
-            nft_price = nft_price * U256::exp10(6) / eth_usd;
-        }
+    //     // if auction.reserve_asset == ReserveAsset::Usdt {
+    //     //     let eth_usd = self.prices_client.read().await.get_eth_usd_price();
+    //     //     nft_price = nft_price * U256::exp10(6) / eth_usd;
+    //     // }
 
-        Ok(nft_price)
-    }
+    //     let eth_usd = self.prices_client.read().await.get_eth_usd_price();
+    //     let prices = self.prices_client.read().await.;
+
+    //     Ok(nft_price)
+    // }
 
     async fn send_bid(&self, auction: &Auction, bid: U256) -> Result<BundleRequest> {
         let bundle = BundleRequest::new()
             .set_max_timestamp(auction.bid_end_timestamp.as_u64())
             // 22 is arbitrary
             // can change in future
-            .set_min_timestamp(auction.bid_end_timestamp.as_u64() - 22);
+            .set_min_timestamp(auction.bid_end_timestamp.as_u64() - 14);
         self.global_provider
             .create_auction_bundle(bundle, vec![AuctionBid::new(auction, bid)], true)
             .await

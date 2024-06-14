@@ -18,9 +18,10 @@ use futures::future::try_join_all;
 use log::{error, info};
 use messenger_rs::slack_hook::SlackClient;
 use std::sync::Arc;
+use std::time::Instant;
 use tokio::sync::{Mutex, RwLock};
 use tokio::task::JoinHandle;
-use tokio::time::{sleep, Duration};
+use tokio::time::{sleep, sleep_until, Duration};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -36,7 +37,7 @@ async fn main() -> Result<()> {
     let provider = bend_dao.get_provider();
 
     // KILL THIS
-    let global_provider = bend_dao.get_global_provider();
+    let global_provider = Arc::new(bend_dao.get_global_provider());
 
     let slack = bend_dao.slack_bot.clone();
 
@@ -56,7 +57,7 @@ async fn main() -> Result<()> {
     );
     let task_three_handle =
         last_minute_bid_task(bend_dao.clone(), global_provider, Arc::new(slack));
-    let task_four_handle = refresh_nft_prices_task(prices_client.clone());
+    let task_four_handle = refresh_nft_prices_task(prices_client);
 
     let _ = try_join_all([
         task_one_handle,
@@ -117,7 +118,7 @@ fn bend_dao_event_task(
 fn nft_oracle_mempool_task(
     provider: Arc<Provider<Ws>>,
     bend_dao_state: Arc<Mutex<BendDao>>,
-    global_provider: GlobalProvider,
+    global_provider: Arc<GlobalProvider>,
     simulator: Simulator,
 ) -> JoinHandle<Result<()>> {
     tokio::spawn(async move {
@@ -179,7 +180,7 @@ fn nft_oracle_mempool_task(
 /// task that monitors all ongoing auctions
 fn last_minute_bid_task(
     bend_dao_state: Arc<Mutex<BendDao>>,
-    global_provider: GlobalProvider,
+    global_provider: Arc<GlobalProvider>,
     slack: Arc<SlackClient>,
 ) -> JoinHandle<Result<()>> {
     tokio::spawn(async move {
@@ -187,20 +188,11 @@ fn last_minute_bid_task(
         let mut stream = provider.subscribe_blocks().await?;
 
         while let Some(block) = stream.next().await {
-            let auctions_due = bend_dao_state
+            let (ours, not_ours) = bend_dao_state
                 .lock()
                 .await
                 .pending_auctions
                 .pop_auctions_due(block.timestamp);
-
-            // TODO: We need to make sure we also liquidate ours. Or ignore if they outbid us.
-            let (ours, not_ours): (Vec<_>, Vec<_>) = auctions_due
-                .into_iter()
-                .partition(|auction| auction.current_bidder == OUR_EOA_ADDRESS.into());
-
-            if not_ours.is_empty() {
-                continue;
-            }
 
             let bundles = bend_dao_state.lock().await.try_bids(&not_ours).await?;
 
@@ -225,7 +217,7 @@ fn last_minute_bid_task(
                             match global_provider_clone.liquidate_loan(&auction).await {
                                 Ok(_) => {
                                     let message = format!(
-                                        "liquidated {:?} #{:?} successfully",
+                                        "liquidated https://www.benddao.xyz/en/auctions/bid/{:?}/#{:?} successfully",
                                         auction.nft_asset, auction.nft_token_id
                                     );
                                     info!("{}", message);
@@ -243,6 +235,25 @@ fn last_minute_bid_task(
                         }
                     }
                 });
+            }
+        
+
+            for auction in ours {
+                match global_provider.liquidate_loan(&auction).await {
+                    Ok(_) => {
+                        let message = format!(
+                            "liquidated https://www.benddao.xyz/en/auctions/bid/{:?}/#{} successfully",
+                            auction.nft_asset, auction.nft_token_id
+                        );
+                        info!("{}", message);
+                        if let Err(e) = slack.send_message(message).await {
+                            error!("failed to send slack message {e}");
+                        }
+                    }
+                    Err(e) => {
+                        error!("error sending bundle: {}", e);
+                    }
+                }
             }
         }
 

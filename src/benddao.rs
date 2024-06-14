@@ -48,8 +48,6 @@ impl BendDao {
         self.global_provider.provider.clone()
     }
 
-    // temp fn
-    // TODO: CHANGE !!!
     pub fn get_global_provider(&self) -> GlobalProvider {
         self.global_provider.clone()
     }
@@ -71,7 +69,10 @@ impl BendDao {
 
         self.pending_auctions.add_update_auction(auction);
 
-        self.slack_bot.send_message("").await.ok();
+        let msg = format!("*Auction* started by {:?} for https://www.benddao.xyz/en/auctions/bid/{:?}/{:?}", evt.on_behalf_of, evt.nft_asset, evt.nft_token_id);
+
+        warn!("{msg}");
+        self.slack_bot.send_message(msg).await.ok();
     }
 
     pub async fn react_to_redeem(&mut self, evt: RedeemFilter) {

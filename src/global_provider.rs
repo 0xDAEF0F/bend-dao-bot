@@ -284,7 +284,7 @@ impl GlobalProvider {
 
         let (_loan_id, _bid_start_timestamp, bid_end_timestamp, _redeem_end_timestamp) = self
             .lend_pool
-            .get_nft_auction_end_time(nft_asset.try_into().unwrap(), token_id)
+            .get_nft_auction_end_time(nft_asset.into(), token_id)
             .await?;
 
         if timestamp >= bid_end_timestamp {

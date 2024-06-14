@@ -1,6 +1,7 @@
-use super::Auction;
-use crate::constants::DELAY_FOR_LAST_BID;
+use super::{auction, Auction};
+use crate::constants::{DELAY_FOR_LAST_BID, OUR_EOA_ADDRESS};
 use ethers::types::*;
+use log::info;
 
 // ideally we dont do this
 // imo makes the code ugly
@@ -50,17 +51,25 @@ impl PendingAuctions {
             .position(|a| a.nft_asset == nft_asset && a.nft_token_id == nft_token_id)
         {
             self.pending_auctions.remove(idx);
+        } else {
+            info!("could not remove {:?} #{}", nft_asset, nft_token_id);
         }
     }
 
-    pub fn pop_auctions_due(&mut self, current_timestamp: U256) -> Vec<Auction> {
-        let mut auctions = vec![];
+    pub fn pop_auctions_due(&mut self, current_timestamp: U256) -> (Vec<Auction>, Vec<Auction>) {
+        let mut auctions_due = vec![];
         while let Some(auction) = self.peek() {
             if auction.bid_end_timestamp > current_timestamp + DELAY_FOR_LAST_BID {
                 break;
             }
-            auctions.push(self.pop_first().unwrap());
+            auctions_due.push(self.pop_first().unwrap());
         }
-        auctions
+        let (mut ours, not_ours): (Vec<_>, Vec<_>) = auctions_due
+                .into_iter()
+                .partition(|auction| auction.current_bidder == OUR_EOA_ADDRESS.into());
+
+        ours.retain(|auction| auction.bid_end_timestamp > current_timestamp);
+
+        (ours, not_ours)
     }
 }

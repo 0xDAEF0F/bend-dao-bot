@@ -1,7 +1,5 @@
 use super::status::Status;
 use crate::constants::*;
-use crate::global_provider::GlobalProvider;
-use crate::prices_client::PricesClient;
 use anyhow::{bail, Result};
 use core::fmt;
 use ethers::types::*;
@@ -35,20 +33,6 @@ impl Display for Loan {
 }
 
 impl Loan {
-    pub async fn get_nft_auction_end_time(&self, gp: &GlobalProvider) -> Option<U256> {
-        if !self.status.is_in_current_auction() {
-            return None;
-        }
-
-        let (_loan_id, _bid_start_timestamp, bid_end_timestamp, _redeem_end_timestamp) = gp
-            .lend_pool
-            .get_nft_auction_end_time(self.nft_asset.into(), self.nft_token_id)
-            .await
-            .unwrap();
-
-        Some(bid_end_timestamp)
-    }
-
     pub fn is_auctionable(&self) -> bool {
         self.health_factor < U256::exp10(18)
     }

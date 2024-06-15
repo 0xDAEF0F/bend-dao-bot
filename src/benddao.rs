@@ -3,16 +3,12 @@ pub mod status;
 
 use self::status::Status;
 use crate::{
-    global_provider::GlobalProvider,
-    prices_client::PricesClient,
-    types::*,
-    utils::{calculate_bidding_amount, get_repaid_defaulted_loans, save_repaid_defaulted_loans},
-    AuctionFilter, Config, LiquidateFilter, RedeemFilter,
+    constants::OUR_EOA_ADDRESS, global_provider::GlobalProvider, prices_client::PricesClient, types::*, utils::{calculate_bidding_amount, get_repaid_defaulted_loans, save_repaid_defaulted_loans}, AuctionFilter, Config, LiquidateFilter, RedeemFilter
 };
 use anyhow::Result;
 use ethers::{
     providers::{Middleware, Provider, Ws},
-    types::{spoof::State, Transaction, U256},
+    types::{spoof::State, Transaction, H160, U256},
 };
 use ethers_flashbots::BundleRequest;
 use loan::{Loan, NftAsset, ReserveAsset};
@@ -70,11 +66,11 @@ impl BendDao {
         let msg = match self.pending_auctions.add_update_auction(auction) {
             true => format!(
                 "Auction/Bid for {:?} #{} by {}",
-                evt.nft_asset, evt.nft_token_id, evt.on_behalf_of
+                evt.nft_asset, evt.nft_token_id, {if evt.on_behalf_of != OUR_EOA_ADDRESS.into() { evt.on_behalf_of.to_string() } else { "us".to_string() }}
             ),
             false => format!(
                 "New Auction for https://www.benddao.xyz/en/auctions/bid/{:?}/{} by {}",
-                evt.nft_asset, evt.nft_token_id, evt.on_behalf_of
+                evt.nft_asset, evt.nft_token_id, {if evt.on_behalf_of != OUR_EOA_ADDRESS.into() { evt.on_behalf_of.to_string() } else { "us".to_string() }}
             ),
         };
 

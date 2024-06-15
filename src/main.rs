@@ -232,7 +232,7 @@ fn last_minute_bid_task(
                             match global_provider_clone.liquidate_loan(&auction).await {
                                 Ok(_) => {
                                     let message = format!(
-                                        "liquidated https://www.benddao.xyz/en/auctions/bid/{:?}/#{:?} successfully",
+                                        "liquidated https://www.benddao.xyz/en/auctions/bid/{:?}/{:?} successfully",
                                         auction.nft_asset, auction.nft_token_id
                                     );
                                     info!("{}", message);
@@ -256,7 +256,7 @@ fn last_minute_bid_task(
                 match global_provider.liquidate_loan(&auction).await {
                     Ok(_) => {
                         let message = format!(
-                            "liquidated https://www.benddao.xyz/en/auctions/bid/{:?}/#{} successfully",
+                            "liquidated https://www.benddao.xyz/en/auctions/bid/{:?}/{} successfully",
                             auction.nft_asset, auction.nft_token_id
                         );
                         info!("{}", message);

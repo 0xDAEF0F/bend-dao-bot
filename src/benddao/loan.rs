@@ -49,17 +49,6 @@ impl Loan {
         Some(bid_end_timestamp)
     }
 
-    pub async fn get_total_debt_eth(&self, prices_client: &PricesClient) -> Result<U256> {
-        match self.reserve_asset {
-            ReserveAsset::Weth => Ok(self.total_debt),
-            ReserveAsset::Usdt => {
-                let eth_usd_price = prices_client.get_eth_usd_price();
-                let total_debt = self.total_debt * eth_usd_price / U256::exp10(6);
-                Ok(total_debt)
-            }
-        }
-    }
-
     pub fn is_auctionable(&self) -> bool {
         self.health_factor < U256::exp10(18)
     }

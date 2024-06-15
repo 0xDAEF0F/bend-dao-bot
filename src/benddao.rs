@@ -312,7 +312,7 @@ impl BendDao {
             let mut nft_best_bid_price = *prices.get(&auction.nft_asset).unwrap();
 
             if auction.reserve_asset == ReserveAsset::Usdt {
-                nft_best_bid_price = nft_best_bid_price * eth_usd_price / U256::exp10(6);
+                nft_best_bid_price = nft_best_bid_price * U256::exp10(6) / eth_usd_price;
             }
 
             let outbid = auction.current_bid * 101 / 100;

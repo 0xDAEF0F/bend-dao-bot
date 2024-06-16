@@ -145,18 +145,20 @@ fn nft_oracle_mempool_task(
 
             let modded_state = get_new_state_with_twaps_modded(twaps);
 
-            if let Some(bundle) = bend_dao_state
-                .lock()
-                .await
-                .initiate_auctions_if_any(tx, Some(modded_state))
-                .await?
             {
-                match global_provider.send_and_handle_bundle(bundle).await {
-                    Ok(_) => {
-                        info!("bundle sent successfully");
-                    }
-                    Err(e) => {
-                        error!("error sending bundle: {}", e);
+                if let Some(bundle) = bend_dao_state
+                    .lock()
+                    .await
+                    .initiate_auctions_if_any(tx, Some(modded_state))
+                    .await?
+                {
+                    match global_provider.send_and_handle_bundle(bundle).await {
+                        Ok(_) => {
+                            info!("bundle sent successfully");
+                        }
+                        Err(e) => {
+                            error!("error sending bundle: {}", e);
+                        }
                     }
                 }
             }
@@ -165,11 +167,13 @@ fn nft_oracle_mempool_task(
             // the refresh includes the latest update
             sleep(Duration::from_secs(24)).await;
 
-            bend_dao_state
-                .lock()
-                .await
-                .refresh_monitored_loans()
-                .await?;
+            {
+                bend_dao_state
+                    .lock()
+                    .await
+                    .refresh_monitored_loans()
+                    .await?;
+            }
         }
 
         Ok(())
@@ -205,11 +209,13 @@ fn last_minute_bid_task(
                 info!("{}{}{}", msg, msg_, msg__);
             }
 
-            let bundles = bend_dao_state
-                .lock()
-                .await
-                .verify_and_package_outbids(&not_ours)
-                .await?;
+            let bundles = {
+                bend_dao_state
+                    .lock()
+                    .await
+                    .verify_and_package_outbids(&not_ours)
+                    .await?
+            };
 
             for (i, bundle) in bundles.into_iter().enumerate() {
                 let global_provider_clone = global_provider.clone();

@@ -323,10 +323,7 @@ impl BendDao {
         let (prices, eth_usd_price) = {
             let prices_client = self.prices_client.read().await;
 
-            (
-                &prices_client.prices.clone(),
-                prices_client.eth_usd_price
-            )
+            (&prices_client.prices.clone(), prices_client.eth_usd_price)
         };
 
         for auction in auctions {
@@ -356,7 +353,7 @@ impl BendDao {
     async fn send_bid(&self, auction: &Auction, bid: U256) -> Result<BundleRequest> {
         let bundle = BundleRequest::new()
             .set_max_timestamp(auction.bid_end_timestamp.as_u64())
-            // 22 is arbitrary
+            // 14 is arbitrary
             // can change in future
             .set_min_timestamp(auction.bid_end_timestamp.as_u64() - 14);
         self.global_provider

@@ -11,7 +11,7 @@ use ethers::{
     middleware::SignerMiddleware,
     providers::{Middleware, Provider, Ws},
     signers::{coins_bip39::English, LocalWallet, MnemonicBuilder, Signer, Wallet},
-    types::{spoof::State, Address, Transaction, U256},
+    types::{spoof::State, transaction::eip2718::TypedTransaction, Address, Transaction, U256},
 };
 use ethers_flashbots::{BroadcasterMiddleware, BundleRequest};
 use futures::future::join_all;
@@ -201,7 +201,7 @@ impl GlobalProvider {
         for loan in loans {
             let nft_asset: Address = loan.nft_asset;
 
-            let mut tx = self
+            let mut tx: TypedTransaction = self
                 .lend_pool
                 .auction(
                     nft_asset,
@@ -211,8 +211,11 @@ impl GlobalProvider {
                 )
                 .tx;
 
+            self.signer_provider.fill_transaction(&mut tx, None).await?;
+
+            // 10 gwei prio fee
             if max_gas {
-                tx.set_gas_price(10);
+                tx.set_gas_price(10_000_000_000_000u64);
             }
 
             let signature = self.local_wallet.sign_transaction(&tx).await?;
@@ -237,10 +240,12 @@ impl GlobalProvider {
     // }
 
     pub async fn liquidate_loan(&self, auction: &Auction) -> Result<()> {
-        let tx = self
+        let mut tx: TypedTransaction = self
             .lend_pool
             .liquidate(auction.nft_asset.into(), auction.nft_token_id, U256::zero())
             .tx;
+
+        self.signer_provider.fill_transaction(&mut tx, None).await?;
 
         let reciept = self
             .signer_provider
@@ -257,11 +262,11 @@ impl GlobalProvider {
                 "loan successfully liquidated here: https://etherscan.io/tx/{:?}",
                 reciept.transaction_hash
             );
+
+            Ok(())
         } else {
             bail!("auction failed")
         }
-
-        Ok(())
     }
 
     pub async fn get_auction_end_timestamp(&self, nft_asset: Address, token_id: U256) -> U256 {

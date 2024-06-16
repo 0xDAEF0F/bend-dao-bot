@@ -15,7 +15,7 @@ const COINMARKETCAP_BASE_URL: &str = "https://pro-api.coinmarketcap.com";
 
 pub struct PricesClient {
     http_client: Client,
-    eth_usd_price: U256,
+    pub eth_usd_price: U256,
     pub prices: HashMap<NftAsset, U256>,
     reservoir_api_key: String,
     coinmarketcap_api_key: String,
@@ -75,6 +75,9 @@ impl PricesClient {
 
         for res in result {
             let (addr, price) = res?;
+            if addr == NftAsset::Bayc {
+                self.prices.insert(NftAsset::StBayc, price);
+            }
             self.prices.insert(addr, price);
         }
 

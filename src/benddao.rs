@@ -3,12 +3,17 @@ pub mod status;
 
 use self::status::Status;
 use crate::{
-    constants::OUR_EOA_ADDRESS, global_provider::GlobalProvider, prices_client::PricesClient, types::*, utils::{calculate_bidding_amount, get_repaid_defaulted_loans, save_repaid_defaulted_loans}, AuctionFilter, Config, LiquidateFilter, RedeemFilter
+    constants::OUR_EOA_ADDRESS,
+    global_provider::GlobalProvider,
+    prices_client::PricesClient,
+    types::*,
+    utils::{calculate_bidding_amount, get_repaid_defaulted_loans, save_repaid_defaulted_loans},
+    AuctionFilter, Config, LiquidateFilter, RedeemFilter,
 };
 use anyhow::Result;
 use ethers::{
     providers::{Middleware, Provider, Ws},
-    types::{spoof::State, Transaction, H160, U256},
+    types::{spoof::State, Transaction, U256},
 };
 use ethers_flashbots::BundleRequest;
 use loan::{Loan, NftAsset, ReserveAsset};
@@ -65,12 +70,31 @@ impl BendDao {
 
         let msg = match self.pending_auctions.add_update_auction(auction) {
             true => format!(
-                "Auction/Bid for {:?} #{} by {}",
-                evt.nft_asset, evt.nft_token_id, {if evt.on_behalf_of != OUR_EOA_ADDRESS.into() { evt.on_behalf_of.to_string() } else { "us".to_string() }}
+                "Bid for {:?} #{} by {} \n time remaining: {}",
+                evt.nft_asset,
+                evt.nft_token_id,
+                {
+                    if evt.on_behalf_of != OUR_EOA_ADDRESS.into() {
+                        evt.on_behalf_of.to_string() + " (not us)"
+                    } else {
+                        "us".to_string()
+                    }
+                },
+                chrono::TimeDelta::seconds(
+                    bid_end_timestamp.as_u64() as i64 - chrono::Local::now().timestamp()
+                )
             ),
             false => format!(
                 "New Auction for https://www.benddao.xyz/en/auctions/bid/{:?}/{} by {}",
-                evt.nft_asset, evt.nft_token_id, {if evt.on_behalf_of != OUR_EOA_ADDRESS.into() { evt.on_behalf_of.to_string() } else { "us".to_string() }}
+                evt.nft_asset,
+                evt.nft_token_id,
+                {
+                    if evt.on_behalf_of != OUR_EOA_ADDRESS.into() {
+                        evt.on_behalf_of.to_string() + " (not us)"
+                    } else {
+                        "us".to_string()
+                    }
+                }
             ),
         };
 
@@ -298,9 +322,10 @@ impl BendDao {
 
         let (prices, eth_usd_price) = {
             let prices_client = self.prices_client.read().await;
+
             (
                 &prices_client.prices.clone(),
-                prices_client.get_eth_usd_price(),
+                prices_client.eth_usd_price
             )
         };
 

@@ -29,6 +29,8 @@ impl PendingAuctions {
     }
 
     /// adds a new auction and takes care of sorting them.
+    ///
+    /// returns true if add, returns false if update
     pub fn add_update_auction(&mut self, auction: Auction) -> bool {
         if let Some(idx) = self.pending_auctions.iter().position(|a| {
             a.nft_asset == auction.nft_asset && a.nft_token_id == auction.nft_token_id

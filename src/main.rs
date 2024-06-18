@@ -35,7 +35,6 @@ async fn main() -> Result<()> {
 
     let provider = bend_dao.get_provider();
 
-    // KILL THIS
     let global_provider = Arc::new(bend_dao.get_global_provider());
 
     let slack = bend_dao.slack_bot.clone();
@@ -44,7 +43,6 @@ async fn main() -> Result<()> {
 
     let bend_dao = Arc::new(Mutex::new(bend_dao));
 
-    // seperated/out of bend dao struct so lock is shorter
     let simulator = Simulator::new(config);
 
     let task_one_handle = bend_dao_event_task(provider.clone(), bend_dao.clone());

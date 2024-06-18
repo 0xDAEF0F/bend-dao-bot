@@ -283,7 +283,7 @@ fn refresh_nft_prices_task(prices_client: Arc<RwLock<PricesClient>>) -> JoinHand
     tokio::spawn(async move {
         loop {
             prices_client.write().await.refresh_prices().await?;
-            sleep(Duration::from_secs(4 * ONE_HOUR)).await;
+            sleep(Duration::from_secs(ONE_HOUR)).await;
         }
     })
 }

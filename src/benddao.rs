@@ -99,7 +99,7 @@ impl BendDao {
             ),
         };
 
-        warn!("{msg}");
+        info!("{msg}");
         self.slack_bot.send_message(msg).await.ok();
     }
 
@@ -109,8 +109,8 @@ impl BendDao {
             .remove_auction(nft_asset, evt.nft_token_id);
 
         let nft_asset = NftAsset::try_from(evt.nft_asset).unwrap();
-        let msg = format!("redeem happened. {:?} #{}", nft_asset, evt.nft_token_id);
-        warn!("{msg}");
+        let msg = format!("Redeem happened on {:?} #{}", nft_asset, evt.nft_token_id);
+        info!("{msg}");
         self.slack_bot.send_message(&msg).await.ok();
     }
 

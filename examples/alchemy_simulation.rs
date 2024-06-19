@@ -52,27 +52,28 @@ async fn main() -> Result<()> {
         .json(&req)
         .send()
         .await?
-        .text()
+        .json::<Res>()
         .await?;
 
-    println!("{}", res);
+    let logs = res.result.logs;
 
-    return Ok(());
-
-    // let logs = res.result.logs;
-
-    // for log in logs {
-    //     if &log.topics[0].to_string()
-    //         == "0x58bdf68b6e757afad014720959e6c9ecd94de1cc24b964ebf48b08b50366b321"
-    //     {
-    //         dbg!(&log.topics[1]);
-    //         println!(
-    //             "New asset price for {:?} of {}",
-    //             H160::from_str(&log.topics[1])?,
-    //             format_ether(U256::from_str_radix(&log.data.as_str()[..66], 16)?)
-    //         )
-    //     }
-    // }
+    for log in logs {
+        if &log.topics[0].to_string()
+            == "0x58bdf68b6e757afad014720959e6c9ecd94de1cc24b964ebf48b08b50366b321"
+        {
+            let addr = if log.topics[1].len() == 42 {
+                H160::from_str(&log.topics[1])?
+            } else {
+                H160::from_str(&log.topics[1].replace("x", "x0"))?
+            };
+            
+            println!(
+                "New asset price for {:?} of {}",
+                addr,
+                format_ether(U256::from_str_radix(&log.data.as_str()[..66], 16)?)
+            )
+        }
+    }
 
     Ok(())
 }

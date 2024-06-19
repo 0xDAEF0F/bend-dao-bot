@@ -50,8 +50,14 @@ impl Simulator {
             if &log.topics[0].to_string()
                 == "0x58bdf68b6e757afad014720959e6c9ecd94de1cc24b964ebf48b08b50366b321"
             {
+                let addr = if log.topics[1].len() == 42 {
+                    H160::from_str(&log.topics[1])?
+                } else {
+                    H160::from_str(&log.topics[1].replace("x", "x0"))?
+                };
+
                 prices.push((
-                    H160::from_str(&log.topics[1]).unwrap(),
+                    addr,
                     U256::from_str_radix(&log.data[..66], 16)?,
                 ));
             }

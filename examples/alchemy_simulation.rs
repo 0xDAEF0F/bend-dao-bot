@@ -3,7 +3,7 @@ use std::{str::FromStr, sync::Arc};
 use anyhow::Result;
 use ethers::{
     providers::{Middleware, Provider, Ws},
-    types::{Address, Bytes, H256, U256},
+    types::{Address, Bytes, H160, H256, U256},
     utils::format_ether,
 };
 use serde::{Deserialize, Serialize};
@@ -12,6 +12,8 @@ const URL: &str = "https://eth-mainnet.g.alchemy.com/v2/qIduQHjE0M6sV1a2ak5hEvtP
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    println!("tst");
+
     let client = reqwest::Client::new();
     let provider = Arc::new(
         Provider::<Ws>::connect(
@@ -20,9 +22,12 @@ async fn main() -> Result<()> {
         .await?,
     );
 
+    println!("tst");
+
+
     let tx = provider
         .get_transaction(H256::from_str(
-            "0x5bc6db566e6965402b597e8ef85b79c2ef67e87d0144112bb6d19a3623b74cfb",
+            "0x4ff4e7a963a540815a4b140db14da983fd4be6a0f70cdf9ec7ae20c7b4a11b45",
         )?)
         .await?
         .unwrap();
@@ -39,27 +44,35 @@ async fn main() -> Result<()> {
         }],
     };
 
-    let req = client
+    println!("tst");
+
+
+    let res = client
         .post(URL)
         .json(&req)
         .send()
         .await?
-        .json::<Res>()
+        .text()
         .await?;
 
-    let logs = req.result.logs;
+    println!("{}", res);
 
-    for log in logs {
-        if &log.topics[0].to_string()
-            == "0x58bdf68b6e757afad014720959e6c9ecd94de1cc24b964ebf48b08b50366b321"
-        {
-            println!(
-                "New asset price for {:?} of {}",
-                log.topics[1],
-                format_ether(U256::from_str_radix(&log.data.as_str()[..66], 16)?)
-            )
-        }
-    }
+    return Ok(());
+
+    // let logs = res.result.logs;
+
+    // for log in logs {
+    //     if &log.topics[0].to_string()
+    //         == "0x58bdf68b6e757afad014720959e6c9ecd94de1cc24b964ebf48b08b50366b321"
+    //     {
+    //         dbg!(&log.topics[1]);
+    //         println!(
+    //             "New asset price for {:?} of {}",
+    //             H160::from_str(&log.topics[1])?,
+    //             format_ether(U256::from_str_radix(&log.data.as_str()[..66], 16)?)
+    //         )
+    //     }
+    // }
 
     Ok(())
 }
@@ -90,7 +103,7 @@ struct Results {
     logs: Vec<Log>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 struct Log {
     // address: Address,
     topics: Vec<String>,

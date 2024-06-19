@@ -93,24 +93,3 @@ struct Log {
     topics: Vec<String>,
     data: String,
 }
-
-/* impl Simulator {
-    pub async fn new(cfg: ConfigVars) -> Self {
-        let provider = Provider::<Ws>::connect(&cfg.wss_rpc_url).await.unwrap();
-        let ethers_db = EthersDB::new(Arc::new(provider), None).unwrap();
-        ethers_db.basic_ref(address);
-        let db = CacheDB::new(ethers_db);
-        Self { db }
-    }
-
-    /// creates cache by doing a simulation of a past price update
-    pub async fn create_cache(&mut self) -> Result<()> {
-        self.db.load_account(Address::from_slice(&ORACLE_ADDRESS))?;
-        Ok(())
-    }
-
-    pub async fn simulate_price_change() -> Result<Vec<>> {
-
-    }
-
-} */

@@ -11,10 +11,7 @@ pub enum Status {
 
 impl Status {
     pub fn is_in_current_auction(&self) -> bool {
-        match self {
-            Status::Auction(_) => true,
-            _ => false,
-        }
+        matches!(self, Status::Auction(_))
     }
 }
 

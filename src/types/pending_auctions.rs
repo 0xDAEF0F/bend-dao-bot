@@ -72,10 +72,10 @@ impl PendingAuctions {
                 break;
             }
             // if ours, continue if not liquidatable
-            if auction.current_bidder == OUR_EOA_ADDRESS.into() {
-                if auction.bid_end_timestamp > current_timestamp {
-                    continue;
-                }
+            if auction.current_bidder == OUR_EOA_ADDRESS.into()
+                && auction.bid_end_timestamp > current_timestamp
+            {
+                continue;
             }
             auctions_due.push(self.pop_first().unwrap());
         }

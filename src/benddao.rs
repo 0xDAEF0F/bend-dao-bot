@@ -35,13 +35,14 @@ impl BendDao {
     pub async fn try_new(
         config_vars: Config,
         prices_client: Arc<RwLock<PricesClient>>,
+        slack_bot: SlackClient,
     ) -> Result<BendDao> {
         Ok(BendDao {
             monitored_loans: vec![],
             pending_auctions: PendingAuctions::default(),
             global_provider: GlobalProvider::try_new(config_vars.clone()).await?,
             prices_client,
-            slack_bot: SlackClient::new(config_vars.clone().slack_url),
+            slack_bot,
         })
     }
 
@@ -70,8 +71,8 @@ impl BendDao {
 
         let msg = match self.pending_auctions.add_update_auction(auction) {
             true => format!(
-                "Bid for {:?} #{} by {} \n time remaining: {}",
-                evt.nft_asset,
+                "New bid for {:?} #{} by {} | Auction time remaining: {} seconds",
+                auction.nft_asset,
                 evt.nft_token_id,
                 {
                     if evt.on_behalf_of != OUR_EOA_ADDRESS.into() {
@@ -83,11 +84,12 @@ impl BendDao {
                 chrono::TimeDelta::seconds(
                     bid_end_timestamp.as_u64() as i64 - chrono::Local::now().timestamp()
                 )
+                .num_seconds()
             ),
             false => format!(
-                "New Auction for https://www.benddao.xyz/en/auctions/bid/{:?}/{} by {}",
-                evt.nft_asset,
-                evt.nft_token_id,
+                "New auction initiated for {:?} #{} by {}",
+                auction.nft_asset,
+                auction.nft_token_id,
                 {
                     if evt.on_behalf_of != OUR_EOA_ADDRESS.into() {
                         evt.on_behalf_of.to_string() + " (not us)"
@@ -98,7 +100,7 @@ impl BendDao {
             ),
         };
 
-        warn!("{msg}");
+        info!("{msg}");
         self.slack_bot.send_message(msg).await.ok();
     }
 
@@ -108,8 +110,8 @@ impl BendDao {
             .remove_auction(nft_asset, evt.nft_token_id);
 
         let nft_asset = NftAsset::try_from(evt.nft_asset).unwrap();
-        let msg = format!("redeem happened. {:?} #{}", nft_asset, evt.nft_token_id);
-        warn!("{msg}");
+        let msg = format!("Redeem happened on {:?} #{}", nft_asset, evt.nft_token_id);
+        info!("{msg}");
         self.slack_bot.send_message(&msg).await.ok();
     }
 

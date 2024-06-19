@@ -71,8 +71,8 @@ impl BendDao {
 
         let msg = match self.pending_auctions.add_update_auction(auction) {
             true => format!(
-                "Bid for {:?} #{} by {} \n time remaining: {}",
-                evt.nft_asset,
+                "New bid for {:?} #{} by {} | Auction time remaining: {} seconds",
+                auction.nft_asset,
                 evt.nft_token_id,
                 {
                     if evt.on_behalf_of != OUR_EOA_ADDRESS.into() {
@@ -84,11 +84,12 @@ impl BendDao {
                 chrono::TimeDelta::seconds(
                     bid_end_timestamp.as_u64() as i64 - chrono::Local::now().timestamp()
                 )
+                .num_seconds()
             ),
             false => format!(
-                "New Auction for https://www.benddao.xyz/en/auctions/bid/{:?}/{} by {}",
-                evt.nft_asset,
-                evt.nft_token_id,
+                "New auction initiated for {:?} #{} by {}",
+                auction.nft_asset,
+                auction.nft_token_id,
                 {
                     if evt.on_behalf_of != OUR_EOA_ADDRESS.into() {
                         evt.on_behalf_of.to_string() + " (not us)"

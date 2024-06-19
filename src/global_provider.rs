@@ -59,17 +59,19 @@ impl GlobalProvider {
         let provider = Arc::new(provider);
 
         info!(
-            "connected to provider at: {}",
+            "Connected to provider at URL: {}",
             config_vars.mainnet_rpc_url_ws
         );
         info!(
-            "current block number: {}",
+            "Current Ethereum block number: {}",
             provider.get_block_number().await?
         );
 
         let local_wallet = MnemonicBuilder::<English>::default()
             .phrase(config_vars.mnemonic.as_str())
             .build()?;
+
+        info!("Wallet: {}", local_wallet.address());
 
         let signer_provider = SignerMiddleware::new(
             BroadcasterMiddleware::new(

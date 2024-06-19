@@ -31,7 +31,11 @@ async fn main() -> Result<()> {
 
     let prices_client = PricesClient::new(config.clone());
     let prices_client = Arc::new(RwLock::new(prices_client));
-    let mut bend_dao = BendDao::try_new(config.clone(), prices_client.clone()).await?;
+
+    let slack_bot = SlackClient::new(config.slack_url.clone());
+
+    let mut bend_dao =
+        BendDao::try_new(config.clone(), prices_client.clone(), slack_bot.clone()).await?;
 
     let provider = bend_dao.get_provider();
 
@@ -54,7 +58,7 @@ async fn main() -> Result<()> {
     );
     let task_three_handle =
         last_minute_bid_task(bend_dao.clone(), global_provider, Arc::new(slack));
-    let task_four_handle = refresh_nft_prices_task(prices_client);
+    let task_four_handle = refresh_nft_prices_task(prices_client, slack_bot);
 
     try_join_all([
         task_one_handle,
@@ -279,10 +283,24 @@ fn last_minute_bid_task(
     })
 }
 
-fn refresh_nft_prices_task(prices_client: Arc<RwLock<PricesClient>>) -> JoinHandle<Result<()>> {
+fn refresh_nft_prices_task(
+    prices_client: Arc<RwLock<PricesClient>>,
+    slack_bot: SlackClient, // It already uses an `Arc` under the hood.
+) -> JoinHandle<Result<()>> {
     tokio::spawn(async move {
         loop {
-            prices_client.write().await.refresh_prices().await?;
+            match prices_client.write().await.refresh_prices().await {
+                Ok(()) => {
+                    info!("refreshed NFT prices successfully");
+                }
+                Err(_) => {
+                    error!("failed to refresh NFT prices");
+                    slack_bot
+                        .send_message("Error: Failed to refresh NFT prices.")
+                        .await
+                        .ok();
+                }
+            }
             sleep(Duration::from_secs(ONE_HOUR)).await;
         }
     })

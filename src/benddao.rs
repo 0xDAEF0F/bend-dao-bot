@@ -35,13 +35,14 @@ impl BendDao {
     pub async fn try_new(
         config_vars: Config,
         prices_client: Arc<RwLock<PricesClient>>,
+        slack_bot: SlackClient,
     ) -> Result<BendDao> {
         Ok(BendDao {
             monitored_loans: vec![],
             pending_auctions: PendingAuctions::default(),
             global_provider: GlobalProvider::try_new(config_vars.clone()).await?,
             prices_client,
-            slack_bot: SlackClient::new(config_vars.clone().slack_url),
+            slack_bot,
         })
     }
 

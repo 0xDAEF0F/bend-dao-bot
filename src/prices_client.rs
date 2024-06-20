@@ -4,7 +4,9 @@ use crate::Config;
 use crate::{benddao::loan::NftAsset, coinmarketcap::price_response::PriceResponse};
 use anyhow::Result;
 use ethers::types::{Address, U256};
+use ethers::utils::format_ether;
 use futures::future::try_join_all;
+use log::{info, warn};
 use reqwest::{header::HeaderValue, Client};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -75,6 +77,11 @@ impl PricesClient {
 
         for res in result {
             let (addr, price) = res?;
+            info!(
+                "Reservoir price of {:?} = {} ETH",
+                addr,
+                format_ether(price)
+            );
             if addr == NftAsset::Bayc {
                 self.prices.insert(NftAsset::StBayc, price);
             }

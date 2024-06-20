@@ -203,35 +203,47 @@ impl BendDao {
                 continue;
             }
 
-            if !balances.eth < U256::exp10(16) {
+            if balances.eth < U256::exp10(16) {
                 warn!("not enough eth for txn");
                 continue;
-            } else {
-                balances.eth -= U256::exp10(16);
             }
 
             let bid_amount = calculate_bidding_amount(loan.total_debt);
             match loan.reserve_asset {
                 ReserveAsset::Usdt => {
                     if balances.usdt < bid_amount {
+                        warn!("Not enough USDT to initiate auction.");
+                        warn!(
+                            "usdt balance: {} < bid_amount: {}",
+                            balances.usdt, bid_amount
+                        );
                         continue;
                     } else {
                         let price = prices.get(&loan.nft_asset).unwrap() * U256::exp10(6) / eth_usd;
                         if bid_amount > price {
+                            warn!("USDT: price < bid_amount: Not Profitable.");
                             continue;
                         }
                         balances.usdt -= bid_amount;
+                        balances.eth -= U256::exp10(16);
                     }
                 }
                 ReserveAsset::Weth => {
                     if balances.weth < bid_amount {
+                        warn!("Not enough WETH to initiate auction.");
+                        warn!(
+                            "WETH balance: {} < bid_amount: {}",
+                            balances.weth, bid_amount
+                        );
                         continue;
                     } else {
                         let price = *prices.get(&loan.nft_asset).unwrap();
                         if bid_amount > price {
+                            warn!("WETH: price < bid_amount: Not Profitable.");
                             continue;
                         }
                         balances.weth -= bid_amount;
+                        balances.eth -= U256::exp10(16);
                     }
                 }
             }

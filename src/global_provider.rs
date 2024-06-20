@@ -101,7 +101,7 @@ impl GlobalProvider {
         let address = Address::from(USDT);
         let usdt = Erc20::new(address, provider.clone());
 
-        Ok(GlobalProvider {
+        let global_provider = GlobalProvider {
             local_wallet,
             provider,
             signer_provider,
@@ -109,7 +109,13 @@ impl GlobalProvider {
             lend_pool_loan,
             weth,
             usdt,
-        })
+        };
+
+        let balances = global_provider.get_balances().await?;
+
+        info!("Balances: {:#?}", balances);
+
+        Ok(global_provider)
     }
 
     pub async fn get_loans_from_iter(

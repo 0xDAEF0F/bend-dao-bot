@@ -194,57 +194,53 @@ impl BendDao {
 
         for loan in loans {
             if loan.status != Status::Active || !loan.is_auctionable() {
-                info!("loan is not auctionable");
+                info!("{} is not auctionable", loan);
                 continue;
             }
 
             if !balances.is_usdt_lend_pool_approved || !balances.is_weth_lend_pool_approved {
-                warn!("dont have approved usdt/weth");
+                warn!("Wallet has not approved WETH/USDT allowance");
                 continue;
             }
 
             if balances.eth < U256::exp10(16) {
-                warn!("not enough eth for txn");
+                warn!("Not enough ETH for txn");
                 continue;
             }
 
             let bid_amount = calculate_bidding_amount(loan.total_debt);
             match loan.reserve_asset {
                 ReserveAsset::Usdt => {
-                    if balances.usdt < bid_amount {
-                        warn!("Not enough USDT to initiate auction.");
-                        warn!(
-                            "usdt balance: {} < bid_amount: {}",
-                            balances.usdt, bid_amount
+                    let best_bid = prices.get(&loan.nft_asset).unwrap() * U256::exp10(6) / eth_usd;
+                    if best_bid < bid_amount {
+                        info!(
+                            "{}\nbest_bid = {} < bid_amount = {}",
+                            loan, best_bid, bid_amount
                         );
                         continue;
-                    } else {
-                        let price = prices.get(&loan.nft_asset).unwrap() * U256::exp10(6) / eth_usd;
-                        if bid_amount > price {
-                            warn!("USDT: price < bid_amount: Not Profitable.");
-                            continue;
-                        }
-                        balances.usdt -= bid_amount;
-                        balances.eth -= U256::exp10(16);
                     }
+                    if balances.usdt < bid_amount {
+                        warn!("Not enough USDT to initiate auction.\nUSDT balance = {} < bid_amount = {}", balances.usdt, bid_amount);
+                        continue;
+                    }
+                    balances.usdt -= bid_amount;
+                    balances.eth -= U256::exp10(16);
                 }
                 ReserveAsset::Weth => {
-                    if balances.weth < bid_amount {
-                        warn!("Not enough WETH to initiate auction.");
-                        warn!(
-                            "WETH balance: {} < bid_amount: {}",
-                            balances.weth, bid_amount
+                    let best_bid = *prices.get(&loan.nft_asset).unwrap();
+                    if best_bid < bid_amount {
+                        info!(
+                            "{}\nbest_bid = {} < bid_amount = {}",
+                            loan, best_bid, bid_amount
                         );
                         continue;
-                    } else {
-                        let price = *prices.get(&loan.nft_asset).unwrap();
-                        if bid_amount > price {
-                            warn!("WETH: price < bid_amount: Not Profitable.");
-                            continue;
-                        }
-                        balances.weth -= bid_amount;
-                        balances.eth -= U256::exp10(16);
                     }
+                    if balances.weth < bid_amount {
+                        warn!("Not enough WETH to initiate auction.\nWETH balance = {} < bid_amount = {}", balances.weth, bid_amount);
+                        continue;
+                    }
+                    balances.weth -= bid_amount;
+                    balances.eth -= U256::exp10(16);
                 }
             }
 

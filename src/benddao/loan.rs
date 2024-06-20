@@ -18,15 +18,10 @@ pub struct Loan {
 
 impl Display for Loan {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        // EXAMPLE
-        // BAYC #1234 | USDT | HF: 1.0004 | Active
+        // EXAMPLE: BAYC #1234 (USDT)
         let display_string = format!(
-            "{:?} #{} | {:?} | HF: {:.4} | {}",
-            self.nft_asset,
-            self.nft_token_id,
-            self.reserve_asset,
-            self.health_factor(),
-            self.status
+            "{:?} #{} ({:?})",
+            self.nft_asset, self.nft_token_id, self.reserve_asset,
         );
         write!(f, "{display_string}")
     }

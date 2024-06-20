@@ -305,29 +305,24 @@ impl BendDao {
 
         save_repaid_defaulted_loans(&repaid_defaulted_loans_set).await?;
 
-        self.notify_and_log_monitored_loans().await?;
+        self.log_monitored_loans().await;
 
         Ok(())
     }
 
-    /// Notifies to slack and logs monitored loans every 600 blocks ~ 2 Hrs
-    pub async fn notify_and_log_monitored_loans(&self) -> Result<()> {
-        let block_number = self.global_provider.provider.get_block_number().await?;
-
-        if block_number.as_u64() % 600 != 0 {
-            return Ok(());
-        }
-
-        let mut msg = format!("~~~ Block: *#{}* ~~~\n", block_number);
+    /// Logs monitored loans
+    pub async fn log_monitored_loans(&self) {
+        let mut msg = format!("~~~ MONITORED LOANS ~~~\n");
 
         let range = self.monitored_loans.iter().map(|loan_id| loan_id.as_u64());
         let mut loans = self
             .global_provider
             .get_loans_from_iter(range, None)
-            .await?;
+            .await
+            .unwrap();
         loans.sort_by_key(|x| x.health_factor);
 
-        for loan in loans.into_iter().take(5) {
+        for loan in loans {
             msg.push_str(&format!(
                 "{:?} #{} | HF: *{:.5}*\n",
                 loan.nft_asset,
@@ -336,10 +331,7 @@ impl BendDao {
             ));
         }
 
-        let _ = self.slack_bot.send_message(&msg).await;
         info!("{msg}");
-
-        Ok(())
     }
 
     /// Bids first auction

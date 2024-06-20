@@ -56,10 +56,7 @@ impl Simulator {
                     H160::from_str(&log.topics[1].replace("x", "x0"))?
                 };
 
-                prices.push((
-                    addr,
-                    U256::from_str_radix(&log.data[..66], 16)?,
-                ));
+                prices.push((addr, U256::from_str_radix(&log.data[..66], 16)?));
             }
         }
 

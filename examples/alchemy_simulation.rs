@@ -24,7 +24,6 @@ async fn main() -> Result<()> {
 
     println!("tst");
 
-
     let tx = provider
         .get_transaction(H256::from_str(
             "0x4ff4e7a963a540815a4b140db14da983fd4be6a0f70cdf9ec7ae20c7b4a11b45",
@@ -46,7 +45,6 @@ async fn main() -> Result<()> {
 
     println!("tst");
 
-
     let res = client
         .post(URL)
         .json(&req)
@@ -66,7 +64,7 @@ async fn main() -> Result<()> {
             } else {
                 H160::from_str(&log.topics[1].replace("x", "x0"))?
             };
-            
+
             println!(
                 "New asset price for {:?} of {}",
                 addr,

@@ -83,16 +83,20 @@ pub enum NftAsset {
     StBayc,
 }
 
-pub const ALL_ALLOWED_NFT_ASSETS: [NftAsset; 1] = [NftAsset::CryptoPunks];
+pub const ALL_ALLOWED_NFT_ASSETS: [NftAsset; 3] = [
+    NftAsset::CryptoPunks,
+    NftAsset::PudgyPenguins,
+    NftAsset::Bayc,
+];
 
 impl NftAsset {
     pub fn is_allowed_in_production(&self) -> bool {
         match self {
             NftAsset::CryptoPunks => true,
-            NftAsset::Bayc => false,
+            NftAsset::Bayc => true,
             NftAsset::StBayc => false,
             NftAsset::CloneX => false,
-            NftAsset::PudgyPenguins => false,
+            NftAsset::PudgyPenguins => true,
             NftAsset::Mayc => false,
             NftAsset::Azuki => false,
         }

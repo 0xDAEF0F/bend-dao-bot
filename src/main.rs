@@ -91,18 +91,24 @@ fn bend_dao_event_task(
             let mut bd_lock = bend_dao_state.lock().await;
             match evt {
                 LendPoolEvents::AuctionFilter(evt) => {
-                    if NftAsset::try_from(evt.nft_asset).is_ok() {
-                        bd_lock.react_to_auction(evt).await;
+                    if let Ok(nft_asset) = NftAsset::try_from(evt.nft_asset) {
+                        if nft_asset.is_allowed_in_production() {
+                            bd_lock.react_to_auction(evt).await;
+                        }
                     }
                 }
                 LendPoolEvents::RedeemFilter(evt) => {
-                    if NftAsset::try_from(evt.nft_asset).is_ok() {
-                        bd_lock.react_to_redeem(evt).await;
+                    if let Ok(nft_asset) = NftAsset::try_from(evt.nft_asset) {
+                        if nft_asset.is_allowed_in_production() {
+                            bd_lock.react_to_redeem(evt).await;
+                        }
                     }
                 }
                 LendPoolEvents::LiquidateFilter(evt) => {
-                    if let Ok(_nft_asset) = NftAsset::try_from(evt.nft_asset) {
-                        bd_lock.react_to_liquidation(evt).await;
+                    if let Ok(nft_asset) = NftAsset::try_from(evt.nft_asset) {
+                        if nft_asset.is_allowed_in_production() {
+                            bd_lock.react_to_liquidation(evt).await;
+                        }
                     }
                 }
                 _ => {}

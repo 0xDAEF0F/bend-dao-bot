@@ -13,7 +13,7 @@ use crate::{
 use anyhow::Result;
 use ethers::{
     providers::{Middleware, Provider, Ws},
-    types::{spoof::State, Transaction, U256},
+    types::{spoof::State, BlockNumber, Transaction, U256},
 };
 use ethers_flashbots::BundleRequest;
 use loan::{Loan, NftAsset, ReserveAsset};
@@ -60,6 +60,15 @@ impl BendDao {
             .get_auction_end_timestamp(evt.nft_asset, evt.nft_token_id)
             .await;
 
+        let curr_timestamp = self
+            .global_provider
+            .provider
+            .get_block(BlockNumber::Latest)
+            .await
+            .unwrap()
+            .unwrap()
+            .timestamp;
+
         let auction = Auction {
             current_bid: evt.bid_price,
             current_bidder: evt.on_behalf_of,
@@ -68,6 +77,16 @@ impl BendDao {
             bid_end_timestamp,
             reserve_asset: evt.reserve.try_into().unwrap(),
         };
+
+        if curr_timestamp + 11 >= bid_end_timestamp {
+            let msg = format!(
+                "Last bid submitted for {:?} #{} by {}",
+                auction.nft_asset, auction.nft_token_id, auction.current_bidder
+            );
+            warn!("{msg}");
+            self.slack_bot.send_message(&msg).await.ok();
+            return;
+        }
 
         let msg = match self.pending_auctions.add_update_auction(auction) {
             true => format!(
